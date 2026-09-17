@@ -1,5 +1,6 @@
 package com.aidiary.global.jwt;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -23,7 +24,9 @@ public class JwtProvider {
 
     public String createAccessToken(Long userId, String email) {
         Date now = new Date();
-        Date expiration = new Date(now.getTime() + ACCESS_TOKEN_EXPIRATION);
+        Date expiration = new Date(
+                now.getTime() + ACCESS_TOKEN_EXPIRATION
+        );
 
         return Jwts.builder()
                 .subject(userId.toString())
@@ -32,5 +35,28 @@ public class JwtProvider {
                 .expiration(expiration)
                 .signWith(secretKey)
                 .compact();
+    }
+
+    public boolean validateToken(String token) {
+        try {
+            Jwts.parser()
+                    .verifyWith(secretKey)
+                    .build()
+                    .parseSignedClaims(token);
+
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public Long getUserId(String token) {
+        Claims claims = Jwts.parser()
+                .verifyWith(secretKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+
+        return Long.valueOf(claims.getSubject());
     }
 }
