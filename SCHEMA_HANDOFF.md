@@ -61,10 +61,10 @@ DB에서 또 엄격히 막을 필요는 없지만, 안전망으로 `CHECK (score
 
 ## 6. 참고사항
 
-- **Gemini 무료 티어 제한** — 분당 5~15회, 일 최대 1,000회. 트래픽 늘면 큐잉/재시도 로직 필요할 수 있음
-- **현재 코드 위치** — `gemini-experiment/analyze.py`, `test_samples.py` (아직 FastAPI로 감싸기 전, 로컬 스크립트 검증 단계)
+- **Gemini 무료 티어 제한** — 모델마다 다름. `gemini-3.7-flash`는 일일 20회로 매우 낮았고, 실험 단계에선 `gemini-3.5-flash-lite`로 전환해서 18/18회 성공 확인함
+- **코드 저장소** — https://github.com/chanwoong00/ai-diary (Public)
 
 ## 다음 단계
 
-1. **찬웅** — analyze.py 검증 완료 후 `POST /analyze` FastAPI 엔드포인트로 래핑
-2. **민정** — 이 엔드포인트를 백엔드에서 호출하도록 연동
+1. ~~**찬웅** — analyze.py 검증 완료 후 `POST /analyze` FastAPI 엔드포인트로 래핑~~ **완료** (`gemini-experiment/app.py`, 실제 HTTP 요청으로 정상/에러 케이스 확인함)
+2. **민정** — 이 엔드포인트를 백엔드에서 호출하도록 연동, GitHub 리포 협업자 초대 수락

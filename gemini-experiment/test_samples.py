@@ -1,8 +1,11 @@
 import json
+import sys
 import time
 from collections import Counter
 
 from analyze import analyze_diary
+
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 REPEATS = 3
 CALL_DELAY_SECONDS = 13  # 무료 티어 분당 5회 제한(gemini-3.7-flash 기준)을 피하기 위한 호출 간격
