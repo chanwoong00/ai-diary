@@ -1,4 +1,5 @@
 package com.aidiary.global.exception;
+import com.aidiary.global.gemini.GeminiClientException;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -47,6 +48,19 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
+                .body(response);
+    }
+    @ExceptionHandler(GeminiClientException.class)
+    public ResponseEntity<ErrorResponse> handleGeminiClient(
+            GeminiClientException e
+    ) {
+        ErrorResponse response = new ErrorResponse(
+                "GEMINI_ANALYSIS_FAILED",
+                "감정 분석에 실패했습니다. 잠시 후 다시 시도해주세요."
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_GATEWAY)
                 .body(response);
     }
 }
