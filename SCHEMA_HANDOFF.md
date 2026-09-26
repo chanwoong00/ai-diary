@@ -90,12 +90,12 @@ emotion 코드 ↔ 한글 라벨 (화면 표시용):
 
 `DIARIES : EMOTION_ANALYSES = 1:N` — 일기 하나에 분석 결과를 여러 개 쌓을 수 있는 구조라, 나중에 다른 모델(경량 분류 모델 등)을 붙여 Gemini와 비교하는 확장에도 그대로 쓸 수 있음.
 
-## 5. 민정한테 확인/결정 필요한 것
+## 5. 결정 현황
 
-- **`source` 컬럼 값** — 분석을 어떤 엔진이 만들었는지 기록하는 용도. 모델 버전은 자주 바뀔 수 있어서 `"GEMINI"` 같은 고정 값 추천 (버전까지 기록하고 싶으면 `"gemini-3.5-flash-lite"`).
-- **여러 분석 결과 중 "대표" 구분** — 화면에 보여줄 결과를 `created_at` 최신 1건으로 할지, 별도 플래그를 둘지.
-- **호출 방식(동기/비동기)** — Gemini 호출이라 응답에 보통 수 초 걸림. 일기 저장 API 안에서 동기로 기다릴지, 저장 후 별도 분석 요청(`POST /api/diaries/{diaryId}/analyses`)으로 분리할지 (분리하는 쪽이 자연스러워 보임). 어느 쪽이든 읽기 타임아웃은 30초 정도 권장.
-- **분석 실패 시 처리** — 502를 받았을 때 실패 이력을 남길지, 성공한 분석만 저장할지.
+- **`source` 컬럼 값** — **결정됨**: `"GEMINI"` 고정 (PR #5).
+- **호출 방식(동기/비동기)** — **결정됨**: 일기 저장과 분리된 `POST /api/diaries/{diaryId}/analyses`에서 Spring이 FastAPI를 동기 호출 (연결 5초 / 읽기 30초 타임아웃).
+- **분석 실패 시 처리** — **결정됨**: FastAPI가 오류를 주거나 응답 형식이 이상하거나 서버에 연결이 안 되면 502 `GEMINI_ANALYSIS_FAILED`로 응답하고, 실패 이력은 저장하지 않음 (성공한 분석만 저장).
+- **여러 분석 결과 중 "대표" 구분** — **미정**: 분석을 요청할 때마다 새 행이 쌓이므로, 화면에 보여줄 결과를 `created_at` 최신 1건으로 할지 별도 플래그를 둘지 정해야 함.
 
 ## 6. 참고사항
 
@@ -109,8 +109,10 @@ emotion 코드 ↔ 한글 라벨 (화면 표시용):
 
 1. ~~**찬웅** — `POST /analyze` FastAPI 서버 구현~~ **완료**
 2. ~~**찬웅** — 민정 제안 계약(`content` / 영문 emotion 코드 / `intensity`) 반영 + Java 호출 검증~~ **완료**
-3. ~~**민정** — 회원가입/로그인 API~~ **완료 (PR #1)**, JWT + 일기 CRUD **PR #3 진행 중**
-4. **민정 — 지금 할 것**
-   - `emotion_analyses` 테이블 + `POST /api/diaries/{diaryId}/analyses` 구현 (내부에서 FastAPI `POST /analyze` 호출, 위 1~3번 참고)
-   - 위 5번의 결정 항목 정해서 공유
+3. ~~**민정** — 회원가입/로그인 API~~ **완료 (PR #1)**, ~~JWT + 일기 CRUD~~ **완료 (PR #3)**
+4. ~~**민정** — `emotion_analyses` + `POST /api/diaries/{diaryId}/analyses` 구현 (내부에서 FastAPI `POST /analyze` 호출)~~ **완료 (PR #5)** — `GeminiClient`로 실제 FastAPI를 호출해 한글 일기 응답, 400/서버 다운 처리까지 검증함
+5. **민정 — 지금 할 것**
+   - MySQL 포함 전체 흐름(로그인 → 일기 작성 → `POST /api/diaries/{diaryId}/analyses` → 저장 확인)을 로컬에서 한 번 검증
+   - 프론트엔드 PR #4 수정: `node_modules`/`dist`를 git에서 제거(`.gitignore` + `git rm -r --cached`)하고 소스(`package.json`, `src/` 등) 추가
+   - 위 5번의 "대표 분석 구분" 방식 결정해서 공유
    - `main`에서 `feature/기능명` 브랜치 따서 작업 → PR 흐름 유지
