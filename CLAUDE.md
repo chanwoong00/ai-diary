@@ -13,7 +13,7 @@
 3. 🔄 백엔드 연동 — 주요 API 구현·merge 완료, 전체 흐름 검증 남음. 민정: 회원가입/로그인(PR #1), JWT + 일기 CRUD(PR #3), 감정 분석 결과 저장 API `POST /api/diaries/{diaryId}/analyses`(PR #5).
    분석은 일기 저장과 별도 호출로 분리했고, Spring이 FastAPI `/analyze`를 동기 호출한다(연결 5초/읽기 30초 타임아웃, HTTP/1.1 고정, 주소는 `GEMINI_API_BASE_URL` 환경변수 · 기본 `http://127.0.0.1:8000`). 분석 실패 시 502 `GEMINI_ANALYSIS_FAILED`로 응답하고 성공한 분석만 저장하며, `source`는 `"GEMINI"` 고정이다.
    `GeminiClient` ↔ FastAPI 실제 호출(한글 일기, 400·서버 다운 처리)은 검증했고, MySQL 포함 전체 흐름(로그인 → 일기 작성 → 분석 → 저장)은 아직 검증 전이다.
-4. 🔄 프론트엔드 — 민정이 React(Vite) 웹으로 시작. PR #4는 `node_modules`/`dist` 제거 + 소스 추가 후 재검토 대기. 웹/앱 최종 결정은 과제·공모전 요건 확인 후 (기본 방침: React 웹 + 모바일 화면 기준, 필요하면 PWA/Capacitor로 앱화)
+4. 🔄 프론트엔드 — **웹으로 확정** (React + Vite, 모바일 화면 기준. 필요하면 나중에 PWA/Capacitor로 앱화). PR #4(UI 초안, mock 데이터) merge 완료 — `npm run build` 및 모바일 뷰포트 렌더링 검증함. 후속 브랜치 `feature/frontend-api`에 API 클라이언트(`frontend/src/api/client.ts`, 로그인/일기 CRUD) 추가됐으나 `App.tsx`는 아직 mock 데이터 연결 중, PR 미생성.
 5. ⬜ [확장, 시간 남으면] 공개데이터+직접 라벨링 데이터로 경량 분류 모델 파인튜닝 후 Gemini 결과와 성능(정확도, 속도) 비교
 
 ## 확정된 사항
@@ -77,5 +77,4 @@
 
 ## 아직 정해지지 않은 것
 - 여러 분석 결과 중 화면에 보여줄 "대표" 선택 방식 (현재는 분석 요청마다 새 행이 쌓임) — `SCHEMA_HANDOFF.md` 5번 참고
-- 웹 vs 앱 (과제/공모전 요건 확인 후 확정)
 - 배포 플랫폼 (아직 로컬 개발만 진행 중)
