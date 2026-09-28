@@ -3,6 +3,10 @@ __pycache__/
 *.pyc
 .vscode/
 
+# Frontend generated files
+frontend/node_modules/
+frontend/dist/
+
 HELP.md
 .gradle
 build/
