@@ -3,9 +3,12 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
   createDiary,
+  deleteDiary as deleteDiaryRequest,
   getDiaries,
   hasAccessToken,
   login,
+  getDiary,
+  type DiaryDetail,
   type DiarySummary,
 } from './api/client'
 import './App.css'
@@ -73,6 +76,11 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(hasAccessToken())
 
   const [realDiaries, setRealDiaries] = useState<DiarySummary[]>([])
+  const [selectedRealDiary, setSelectedRealDiary] = useState<DiaryDetail | null>(null)
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false)
+  const [detailLoadError, setDetailLoadError] = useState('')
+  const [isDeletingDiary, setIsDeletingDiary] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
   const [isLoadingDiaries, setIsLoadingDiaries] = useState(false)
   const [diaryLoadError, setDiaryLoadError] = useState('')
 
@@ -128,9 +136,24 @@ export default function App() {
       setIsLoggingIn(false)
     }
   }
-  function openDetail(id: number) {
-    setSelectedId(id)
+  async function openDetail(id: number) {
     setView('detail')
+    setSelectedRealDiary(null)
+    setDetailLoadError('')
+    setIsLoadingDetail(true)
+
+    try {
+      const diary = await getDiary(id)
+      setSelectedRealDiary(diary)
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setDetailLoadError(`${error.message} (${error.status})`)
+      } else {
+        setDetailLoadError('일기 상세 내용을 불러오지 못했습니다.')
+      }
+    } finally {
+      setIsLoadingDetail(false)
+    }
   }
 
   async function saveDiary(event: FormEvent<HTMLFormElement>) {
@@ -167,11 +190,34 @@ export default function App() {
     }
   }
 
-  function deleteDiary() {
-    setDiaries((previous) => previous.filter((diary) => diary.id !== selectedDiary.id))
-    setView('list')
-  }
+  async function handleDeleteDiary() {
+    if (!selectedRealDiary) return
 
+    const confirmed = window.confirm('이 일기를 삭제할까요?')
+    if (!confirmed) return
+
+    setDeleteError('')
+    setIsDeletingDiary(true)
+
+    try {
+      await deleteDiaryRequest(selectedRealDiary.id)
+
+      setRealDiaries((previous) =>
+          previous.filter((diary) => diary.id !== selectedRealDiary.id),
+      )
+
+      setSelectedRealDiary(null)
+      setView('list')
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setDeleteError(`${error.message} (${error.status})`)
+      } else {
+        setDeleteError('일기 삭제 중 오류가 발생했습니다.')
+      }
+    } finally {
+      setIsDeletingDiary(false)
+    }
+  }
   return (
     <main className="app-shell">
       <header className="top-bar">
@@ -277,7 +323,12 @@ export default function App() {
 
               {!isLoadingDiaries && !diaryLoadError &&
                   realDiaries.map((diary) => (
-                      <div className="diary-card" key={diary.id}>
+                      <button
+                          type="button"
+                          className="diary-card"
+                          key={diary.id}
+                          onClick={() => openDetail(diary.id)}
+                      >
                         <span className="emotion-icon small">📖</span>
 
                         <span className="diary-card-copy">
@@ -286,7 +337,7 @@ export default function App() {
           </small>
           <strong>{diary.title ?? '제목 없는 일기'}</strong>
         </span>
-                      </div>
+                      </button>
                   ))}
             </div>
           </section>
@@ -319,19 +370,58 @@ export default function App() {
           </section>
         )}
 
-        {view === 'detail' && selectedDiary && (
-          <section className="page-section detail-page">
-            <button className="back-button" onClick={() => setView('list')}>← 목록으로</button>
-            <p className="eyebrow">{selectedDiary.createdAt}</p><h1>{selectedDiary.title}</h1>
-            <p className="diary-content">{selectedDiary.content}</p>
-            <section className="analysis-card">
-              <p className="eyebrow">AI EMOTION ANALYSIS</p>
-              <div className="analysis-header"><span className="emotion-icon">{emotionInfo[selectedDiary.emotion].icon}</span><div><strong>{emotionInfo[selectedDiary.emotion].label}</strong><p>감정 강도 {selectedDiary.intensity} / 5</p></div></div>
-              <p className="feedback">오늘의 기록에서 차분하게 상황을 돌아보려는 마음이 느껴져요. 스스로에게도 충분히 다정한 하루였으면 해요.</p>
+        {view === 'detail' && (
+            <section className="page-section detail-page">
+              <button className="back-button" onClick={() => setView('list')}>
+                ← 목록으로
+              </button>
+
+              {isLoadingDetail && <p>일기 내용을 불러오는 중이에요...</p>}
+
+              {detailLoadError && (
+                  <p className="login-error">{detailLoadError}</p>
+              )}
+
+              {selectedRealDiary && (
+                  <>
+                    <p className="eyebrow">
+                      {new Date(selectedRealDiary.createdAt).toLocaleDateString('ko-KR')}
+                    </p>
+
+                    <h1>{selectedRealDiary.title ?? '제목 없는 일기'}</h1>
+
+                    <p className="diary-content">{selectedRealDiary.content}</p>
+
+                    {selectedRealDiary.updatedAt && (
+                        <p className="form-note">
+                          수정일: {new Date(selectedRealDiary.updatedAt).toLocaleDateString('ko-KR')}
+                        </p>
+                    )}
+
+                    <section className="analysis-card">
+                      <p className="eyebrow">AI EMOTION ANALYSIS</p>
+                      <p className="feedback">
+                        감정 분석 결과는 다음 단계에서 연결할 예정이에요.
+                      </p>
+                    </section>
+
+                    {deleteError && (
+                      <p className="login-error">{deleteError}</p>
+                    )}
+
+                    <button
+                      className="delete-button"
+                      type="button"
+                      onClick={handleDeleteDiary}
+                      disabled={isDeletingDiary}
+                    >
+                      {isDeletingDiary ? '삭제 중...' : '이 일기 삭제하기'}
+                    </button>
+                  </>
+              )}
             </section>
-            <button className="delete-button" onClick={deleteDiary}>이 일기 삭제하기</button>
-          </section>
         )}
+
       </section>
 
       <nav className="bottom-nav">
