@@ -1,4 +1,13 @@
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
+
+import {
+  ApiError,
+  createDiary,
+  getDiaries,
+  hasAccessToken,
+  login,
+  type DiarySummary,
+} from './api/client'
 import './App.css'
 
 type Emotion = 'JOY' | 'SADNESS' | 'ANGER' | 'ANXIETY' | 'CALM'
@@ -46,44 +55,116 @@ const initialDiaries: Diary[] = [
     intensity: 3,
   },
 ]
-
-type View = 'home' | 'list' | 'write' | 'detail'
+type View = 'home' | 'list' | 'write' | 'detail' | 'login'
 
 export default function App() {
+  const [isSavingDiary, setIsSavingDiary] = useState(false)
+  const [diarySaveError, setDiarySaveError] = useState('')
   const [diaries, setDiaries] = useState<Diary[]>(initialDiaries)
   const [view, setView] = useState<View>('home')
   const [selectedId, setSelectedId] = useState(1)
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
 
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loginError, setLoginError] = useState('')
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(hasAccessToken())
+
+  const [realDiaries, setRealDiaries] = useState<DiarySummary[]>([])
+  const [isLoadingDiaries, setIsLoadingDiaries] = useState(false)
+  const [diaryLoadError, setDiaryLoadError] = useState('')
+
   const selectedDiary = diaries.find((diary) => diary.id === selectedId) ?? diaries[0]
   const recentDiaries = useMemo(() => diaries.slice(0, 3), [diaries])
 
+  useEffect(() => {
+    if (!isLoggedIn) return
+
+    async function loadDiaries() {
+      setIsLoadingDiaries(true)
+      setDiaryLoadError('')
+
+      try {
+        const response = await getDiaries()
+        setRealDiaries(response.content)
+      } catch (error) {
+        if (error instanceof ApiError) {
+          setDiaryLoadError(`${error.message} (${error.status})`)
+        } else {
+          setDiaryLoadError('일기 목록을 불러오지 못했습니다.')
+        }
+      } finally {
+        setIsLoadingDiaries(false)
+      }
+    }
+
+    loadDiaries()
+  }, [isLoggedIn])
+
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setLoginError('')
+    setIsLoggingIn(true)
+
+    try {
+      await login(email, password)
+      setIsLoggedIn(true)
+      setView('home')
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setLoginError(`${error.message} (${error.status})`)
+      } else {
+        console.error('로그인 실패:', error)
+
+        if (error instanceof Error) {
+          setLoginError(error.message)
+        } else {
+          setLoginError('로그인 중 알 수 없는 오류가 발생했습니다.')
+        }
+      }
+    } finally {
+      setIsLoggingIn(false)
+    }
+  }
   function openDetail(id: number) {
     setSelectedId(id)
     setView('detail')
   }
 
-  function saveDiary(event: FormEvent<HTMLFormElement>) {
+  async function saveDiary(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+
     if (!title.trim() || !content.trim()) return
 
-    const diary: Diary = {
-      id: Date.now(),
-      title: title.trim(),
-      content: content.trim(),
-      createdAt: new Intl.DateTimeFormat('ko-KR', {
-        year: 'numeric', month: '2-digit', day: '2-digit',
-      }).format(new Date()).replace(/\. /g, '. ').replace(/\.$/, ''),
-      emotion: 'CALM',
-      intensity: 3,
-    }
+    setDiarySaveError('')
+    setIsSavingDiary(true)
 
-    setDiaries((previous) => [diary, ...previous])
-    setTitle('')
-    setContent('')
-    setSelectedId(diary.id)
-    setView('detail')
+    try {
+      const created = await createDiary(title.trim(), content.trim())
+
+      setRealDiaries((previous) => [
+        {
+          id: created.id,
+          title: created.title,
+          createdAt: created.createdAt,
+        },
+        ...previous,
+      ])
+
+      setTitle('')
+      setContent('')
+      setView('list')
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setDiarySaveError(`${error.message} (${error.status})`)
+      } else {
+        setDiarySaveError('일기 저장 중 오류가 발생했습니다.')
+      }
+    } finally {
+      setIsSavingDiary(false)
+    }
   }
 
   function deleteDiary() {
@@ -98,10 +179,56 @@ export default function App() {
           <span className="brand-mark">✦</span>
           <span>AI Diary</span>
         </button>
-        <button className="profile-button" aria-label="프로필">민</button>
+        <button
+            className="profile-button"
+            onClick={() => setView(isLoggedIn ? 'home' : 'login')}
+            aria-label="로그인"
+        >
+          {isLoggedIn ? '민' : '로그인'}
+        </button>
       </header>
 
       <section className="content">
+        {view === 'login' && (
+            <section className="page-section">
+              <button className="back-button" onClick={() => setView('home')}>
+                ← 돌아가기
+              </button>
+
+              <p className="eyebrow">WELCOME BACK</p>
+              <h1>다시 만나서<br />반가워요</h1>
+
+              <form className="diary-form" onSubmit={handleLogin}>
+                <label>
+                  이메일
+                  <input
+                      type="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="example@email.com"
+                      required
+                  />
+                </label>
+
+                <label>
+                  비밀번호
+                  <input
+                      type="password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder="비밀번호를 입력하세요"
+                      required
+                  />
+                </label>
+
+                {loginError && <p className="login-error">{loginError}</p>}
+
+                <button className="primary-button" type="submit" disabled={isLoggingIn}>
+                  {isLoggingIn ? '로그인 중...' : '로그인하기'}
+                </button>
+              </form>
+            </section>
+        )}
         {view === 'home' && (
           <>
             <div className="hero">
@@ -137,7 +264,31 @@ export default function App() {
         {view === 'list' && (
           <section className="page-section">
             <p className="eyebrow">MY ARCHIVE</p><h1>나의 일기</h1>
-            <div className="diary-list">{diaries.map((diary) => <DiaryCard key={diary.id} diary={diary} onClick={() => openDetail(diary.id)} />)}</div>
+            <div className="diary-list">
+              {isLoadingDiaries && <p>일기를 불러오는 중이에요...</p>}
+
+              {diaryLoadError && (
+                  <p className="login-error">{diaryLoadError}</p>
+              )}
+
+              {!isLoadingDiaries && !diaryLoadError && realDiaries.length === 0 && (
+                  <p>아직 작성한 일기가 없어요.</p>
+              )}
+
+              {!isLoadingDiaries && !diaryLoadError &&
+                  realDiaries.map((diary) => (
+                      <div className="diary-card" key={diary.id}>
+                        <span className="emotion-icon small">📖</span>
+
+                        <span className="diary-card-copy">
+          <small>
+            {new Date(diary.createdAt).toLocaleDateString('ko-KR')}
+          </small>
+          <strong>{diary.title ?? '제목 없는 일기'}</strong>
+        </span>
+                      </div>
+                  ))}
+            </div>
           </section>
         )}
 
@@ -148,8 +299,22 @@ export default function App() {
             <form className="diary-form" onSubmit={saveDiary}>
               <label>제목<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="오늘을 한마디로 표현하면?" maxLength={255} /></label>
               <label>내용<textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder="오늘 있었던 일과 마음을 자유롭게 적어주세요." rows={10} /></label>
-              <p className="form-note">저장 후 AI가 감정과 짧은 피드백을 준비해요.</p>
-              <button className="primary-button" type="submit">일기 저장하기 <span>→</span></button>
+              <p className="form-note">
+                저장 후 AI가 감정과 짧은 피드백을 준비해요.
+              </p>
+
+              {diarySaveError && (
+                  <p className="login-error">{diarySaveError}</p>
+              )}
+
+              <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={isSavingDiary}
+              >
+                {isSavingDiary ? '저장 중...' : '일기 저장하기'}
+                {!isSavingDiary && <span>→</span>}
+              </button>
             </form>
           </section>
         )}
