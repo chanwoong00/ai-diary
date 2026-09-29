@@ -8,6 +8,9 @@ import {
   hasAccessToken,
   login,
   getDiary,
+    analyzeDiary,
+    getLatestAnalysis,
+    type EmotionAnalysisResponse,
   type DiaryDetail,
   type DiarySummary,
 } from './api/client'
@@ -77,6 +80,10 @@ export default function App() {
 
   const [realDiaries, setRealDiaries] = useState<DiarySummary[]>([])
   const [selectedRealDiary, setSelectedRealDiary] = useState<DiaryDetail | null>(null)
+    const [latestAnalysis, setLatestAnalysis] =
+        useState<EmotionAnalysisResponse | null>(null)
+    const [isAnalyzing, setIsAnalyzing] = useState(false)
+    const [analysisError, setAnalysisError] = useState('')
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
   const [detailLoadError, setDetailLoadError] = useState('')
   const [isDeletingDiary, setIsDeletingDiary] = useState(false)
@@ -136,25 +143,36 @@ export default function App() {
       setIsLoggingIn(false)
     }
   }
-  async function openDetail(id: number) {
-    setView('detail')
-    setSelectedRealDiary(null)
-    setDetailLoadError('')
-    setIsLoadingDetail(true)
+    async function openDetail(id: number) {
+        setView('detail')
+        setSelectedRealDiary(null)
+        setLatestAnalysis(null)
+        setDetailLoadError('')
+        setAnalysisError('')
+        setIsLoadingDetail(true)
 
-    try {
-      const diary = await getDiary(id)
-      setSelectedRealDiary(diary)
-    } catch (error) {
-      if (error instanceof ApiError) {
-        setDetailLoadError(`${error.message} (${error.status})`)
-      } else {
-        setDetailLoadError('일기 상세 내용을 불러오지 못했습니다.')
-      }
-    } finally {
-      setIsLoadingDetail(false)
+        try {
+            const diary = await getDiary(id)
+            setSelectedRealDiary(diary)
+
+            try {
+                const analysis = await getLatestAnalysis(id)
+                setLatestAnalysis(analysis)
+            } catch (error) {
+                if (error instanceof ApiError && error.status !== 404) {
+                    setAnalysisError(`${error.message} (${error.status})`)
+                }
+            }
+        } catch (error) {
+            if (error instanceof ApiError) {
+                setDetailLoadError(`${error.message} (${error.status})`)
+            } else {
+                setDetailLoadError('일기 상세 내용을 불러오지 못했습니다.')
+            }
+        } finally {
+            setIsLoadingDetail(false)
+        }
     }
-  }
 
   async function saveDiary(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -176,9 +194,21 @@ export default function App() {
         ...previous,
       ])
 
+      setSelectedRealDiary({
+        id: created.id,
+        title: created.title,
+        content: created.content,
+        createdAt: created.createdAt,
+        updatedAt: null,
+      })
+      setLatestAnalysis(null)
+      setDetailLoadError('')
+      setAnalysisError('')
       setTitle('')
       setContent('')
-      setView('list')
+      setView('detail')
+
+      await runAnalysis(created.id)
     } catch (error) {
       if (error instanceof ApiError) {
         setDiarySaveError(`${error.message} (${error.status})`)
@@ -217,6 +247,29 @@ export default function App() {
     } finally {
       setIsDeletingDiary(false)
     }
+  }
+  async function runAnalysis(diaryId: number) {
+    setAnalysisError('')
+    setIsAnalyzing(true)
+
+    try {
+      const analysis = await analyzeDiary(diaryId)
+      setLatestAnalysis(analysis)
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setAnalysisError(`${error.message} (${error.status})`)
+      } else {
+        setAnalysisError('감정 분석 중 오류가 발생했습니다.')
+      }
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
+  async function handleAnalyze() {
+    if (!selectedRealDiary) return
+
+    await runAnalysis(selectedRealDiary.id)
   }
   return (
     <main className="app-shell">
@@ -398,13 +451,48 @@ export default function App() {
                         </p>
                     )}
 
-                    <section className="analysis-card">
-                      <p className="eyebrow">AI EMOTION ANALYSIS</p>
-                      <p className="feedback">
-                        감정 분석 결과는 다음 단계에서 연결할 예정이에요.
-                      </p>
-                    </section>
+                      <section className="analysis-card">
+                          <p className="eyebrow">AI EMOTION ANALYSIS</p>
 
+                          {latestAnalysis ? (
+                              <>
+                                  <div className="analysis-header">
+        <span className="emotion-icon">
+          {emotionInfo[latestAnalysis.emotion].icon}
+        </span>
+
+                                      <div>
+                                          <strong>{emotionInfo[latestAnalysis.emotion].label}</strong>
+                                          <p>감정 강도 {latestAnalysis.intensity} / 5</p>
+                                      </div>
+                                  </div>
+
+                                  <p className="feedback">{latestAnalysis.feedback}</p>
+
+                                  <button
+                                      className="primary-button"
+                                      type="button"
+                                      onClick={handleAnalyze}
+                                      disabled={isAnalyzing}
+                                  >
+                                      {isAnalyzing ? '다시 분석 중...' : '다시 분석하기'}
+                                  </button>
+                              </>
+                          ) : (
+                              <button
+                                  className="primary-button"
+                                  type="button"
+                                  onClick={handleAnalyze}
+                                  disabled={isAnalyzing}
+                              >
+                                  {isAnalyzing ? '감정 분석 중...' : 'AI로 감정 분석하기'}
+                              </button>
+                          )}
+
+                          {analysisError && (
+                              <p className="login-error">{analysisError}</p>
+                          )}
+                      </section>
                     {deleteError && (
                       <p className="login-error">{deleteError}</p>
                     )}

@@ -35,6 +35,15 @@ export type DiaryCreateResponse = {
   content: string
   createdAt: string
 }
+export type EmotionAnalysisResponse = {
+  id: number
+  diaryId: number
+  source: string
+  emotion: 'JOY' | 'SADNESS' | 'ANGER' | 'ANXIETY' | 'CALM'
+  intensity: number
+  feedback: string
+  createdAt: string
+}
 
 export type DiaryPage = {
   content: DiarySummary[]
@@ -110,4 +119,16 @@ export function createDiary(title: string, content: string) {
 
 export function deleteDiary(diaryId: number) {
   return request<void>(`/api/diaries/${diaryId}`, { method: 'DELETE' })
+}
+export function analyzeDiary(diaryId: number) {
+  return request<EmotionAnalysisResponse>(
+      `/api/diaries/${diaryId}/analyses`,
+      { method: 'POST' },
+  )
+}
+
+export function getLatestAnalysis(diaryId: number) {
+  return request<EmotionAnalysisResponse>(
+      `/api/diaries/${diaryId}/analyses/latest`,
+  )
 }

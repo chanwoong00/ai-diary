@@ -58,4 +58,35 @@ public class EmotionAnalysisService {
                 savedAnalysis.getCreatedAt()
         );
     }
+    @Transactional(readOnly = true)
+    public EmotionAnalysisResponse getLatestAnalysis(
+            Long userId,
+            Long diaryId
+    ) {
+        Diary diary = diaryRepository
+                .findByIdAndUserIdAndDeletedAtIsNull(diaryId, userId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "일기를 찾을 수 없습니다."
+                        )
+                );
+
+        EmotionAnalysis emotionAnalysis = emotionAnalysisRepository
+                .findTopByDiaryIdOrderByCreatedAtDesc(diary.getId())
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "감정 분석 결과를 찾을 수 없습니다."
+                        )
+                );
+
+        return new EmotionAnalysisResponse(
+                emotionAnalysis.getId(),
+                diary.getId(),
+                emotionAnalysis.getSource(),
+                emotionAnalysis.getEmotion(),
+                emotionAnalysis.getIntensity(),
+                emotionAnalysis.getFeedback(),
+                emotionAnalysis.getCreatedAt()
+        );
+    }
 }

@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.GetMapping;
 
 @RestController
 @RequestMapping("/api/diaries")
@@ -29,5 +30,15 @@ public class EmotionAnalysisController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(response);
+    }
+    @GetMapping("/{diaryId}/analyses/latest")
+    public ResponseEntity<EmotionAnalysisResponse> getLatestAnalysis(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long diaryId
+    ) {
+        EmotionAnalysisResponse response =
+                emotionAnalysisService.getLatestAnalysis(userId, diaryId);
+
+        return ResponseEntity.ok(response);
     }
 }
