@@ -10,8 +10,11 @@
 ## 진행 단계
 1. ✅ 실험(스크립트) 단계 — 프롬프트/JSON 응답 품질 검증 완료 (`gemini-experiment/test_samples.py`, `edge_case_test.py`)
 2. ✅ 서버화 — `gemini-experiment/app.py`로 `POST /analyze` FastAPI 엔드포인트 구현 완료, 민정과 합의한 API 계약(영문 emotion 코드 + `intensity`) 반영 및 Java 호출 검증 완료
-3. 🔄 백엔드 연동 — 민정이 회원가입/로그인(PR #1, merge됨) 완료, JWT + 일기 CRUD(PR #3) 진행 중, `emotion_analyses` 테이블 + `POST /api/diaries/{diaryId}/analyses`(내부에서 FastAPI 호출)는 구현 예정
-4. ⬜ [확장, 시간 남으면] 공개데이터+직접 라벨링 데이터로 경량 분류 모델 파인튜닝 후 Gemini 결과와 성능(정확도, 속도) 비교
+3. 🔄 백엔드 연동 — 주요 API 구현·merge 완료, 전체 흐름 검증 남음. 민정: 회원가입/로그인(PR #1), JWT + 일기 CRUD(PR #3), 감정 분석 결과 저장 API `POST /api/diaries/{diaryId}/analyses`(PR #5).
+   분석은 일기 저장과 별도 호출로 분리했고, Spring이 FastAPI `/analyze`를 동기 호출한다(연결 5초/읽기 30초 타임아웃, HTTP/1.1 고정, 주소는 `GEMINI_API_BASE_URL` 환경변수 · 기본 `http://127.0.0.1:8000`). 분석 실패 시 502 `GEMINI_ANALYSIS_FAILED`로 응답하고 성공한 분석만 저장하며, `source`는 `"GEMINI"` 고정이다.
+   `GeminiClient` ↔ FastAPI 실제 호출(한글 일기, 400·서버 다운 처리)은 검증했고, MySQL 포함 전체 흐름(로그인 → 일기 작성 → 분석 → 저장)은 아직 검증 전이다.
+4. 🔄 프론트엔드 — **웹으로 확정** (React + Vite, 모바일 화면 기준. 필요하면 나중에 PWA/Capacitor로 앱화). PR #4(UI 초안, mock 데이터) merge 완료 — `npm run build` 및 모바일 뷰포트 렌더링 검증함. 후속 브랜치 `feature/frontend-api`에 API 클라이언트(`frontend/src/api/client.ts`, 로그인/일기 CRUD) 추가됐으나 `App.tsx`는 아직 mock 데이터 연결 중, PR 미생성.
+5. ⬜ [확장, 시간 남으면] 공개데이터+직접 라벨링 데이터로 경량 분류 모델 파인튜닝 후 Gemini 결과와 성능(정확도, 속도) 비교
 
 ## 확정된 사항
 - **LLM**: Gemini Flash 계열, 무료 티어 사용. 모델별 무료 한도 편차가 커서 실측 필요 — `gemini-3.7-flash`는 일일 20회로 매우 낮았고, `gemini-2.5-flash-lite`는 신규 사용자 지원 종료됨. 현재 `gemini-3.5-flash-lite` 사용 중 (검증 시 24/24 성공).
@@ -73,6 +76,10 @@
 - 커밋 메시지 접두어: `feat:`, `fix:`, `docs:` 등
 
 ## 아직 정해지지 않은 것
-- LLM 호출 방식(동기/비동기)은 백엔드 연동 시점에 함께 결정 예정
-- `EMOTION_ANALYSES.source` 컬럼 값, 여러 분석 결과 중 "대표" 선택 방식 — `SCHEMA_HANDOFF.md` 5번 참고
 - 배포 플랫폼 (아직 로컬 개발만 진행 중)
+
+## 최근 결정 (2026-09-28)
+- **대표 분석 결과**: `created_at` 기준 최신 1건 표시. 과거 분석 행은 삭제하지 않고 보관. (일기 수정 여부와 무관하게 유효 — 재분석 요청만으로도 분석 행이 여러 개 쌓일 수 있음)
+- **일기 수정(Update) 기능**: 지금은 만들지 않고 **나중에 추가하기로 보류**. 현재 `DiaryController`는 작성/조회/삭제만 구현돼 있고 의도된 상태임 (빠뜨린 게 아님).
+  - 보류 사유: 민정이 "일기를 보통 수정하나? 수정 못 하게 하는 게 낫지 않나"라고 제안 — 진짜 일기처럼 "그 순간의 기록은 못 바꾼다"는 방향도 고려됨. 결론이 안 났고 우선순위상 나중으로 미룸.
+  - 나중에 추가하기로 하면 "수정 시 감정분석 재실행, 기존 분석 행 유지하고 새로 추가" 정책은 이미 정해져 있음 (위 대표 분석 결과 규칙과 맞물림).
