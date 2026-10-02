@@ -1,6 +1,7 @@
 package com.aidiary.global.gemini;
 
 
+import com.aidiary.domain.emotion.entity.Emotion;
 import com.aidiary.global.gemini.dto.GeminiAnalyzeRequest;
 import com.aidiary.global.gemini.dto.GeminiAnalyzeResponse;
 import tools.jackson.databind.json.JsonMapper;
@@ -14,6 +15,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Map;
 
 @Component
 public class GeminiClient {
@@ -96,13 +98,37 @@ public class GeminiClient {
                 || analysis.intensity() == null
                 || analysis.intensity() < 1
                 || analysis.intensity() > 5
+                || analysis.scores() == null
                 || analysis.feedback() == null
                 || analysis.feedback().isBlank()
-                || analysis.feedback().length() > 300) {
+                || analysis.feedback().length() > 700
+                || !hasValidScores(analysis.scores(), analysis.emotion(), analysis.intensity())) {
 
             throw new GeminiClientException(
                     "감정 분석 서버의 응답 형식이 올바르지 않습니다."
             );
         }
+    }
+
+    private boolean hasValidScores(
+            Map<Emotion, Integer> scores,
+            Emotion emotion,
+            Integer intensity
+    ) {
+        if (scores.size() != Emotion.values().length
+                || scores.get(emotion) == null
+                || !scores.get(emotion).equals(intensity)) {
+            return false;
+        }
+
+        for (Emotion value : Emotion.values()) {
+            Integer score = scores.get(value);
+
+            if (score == null || score < 0 || score > 5) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

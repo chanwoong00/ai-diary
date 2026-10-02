@@ -1,16 +1,24 @@
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
+
+import {
+  ApiError,
+  createDiary,
+  deleteDiary as deleteDiaryRequest,
+  getDiaries,
+  hasAccessToken,
+  login,
+  logout,
+  signup,
+  getDiary,
+    analyzeDiary,
+    getLatestAnalysis,
+    type EmotionAnalysisResponse,
+  type DiaryDetail,
+  type DiarySummary,
+} from './api/client'
 import './App.css'
 
 type Emotion = 'JOY' | 'SADNESS' | 'ANGER' | 'ANXIETY' | 'CALM'
-
-type Diary = {
-  id: number
-  title: string
-  content: string
-  createdAt: string
-  emotion: Emotion
-  intensity: number
-}
 
 const emotionInfo: Record<Emotion, { label: string; icon: string; color: string }> = {
   JOY: { label: '기쁨', icon: '☀️', color: '#ef9b3d' },
@@ -20,77 +28,249 @@ const emotionInfo: Record<Emotion, { label: string; icon: string; color: string 
   CALM: { label: '평온', icon: '🌿', color: '#5f9d80' },
 }
 
-const initialDiaries: Diary[] = [
-  {
-    id: 1,
-    title: '천천히 정리한 하루',
-    content: '해야 할 일이 많았지만 하나씩 정리하니 마음이 조금 가벼워졌다. 오늘도 충분히 잘 해냈다.',
-    createdAt: '2026. 09. 27',
-    emotion: 'CALM',
-    intensity: 3,
-  },
-  {
-    id: 2,
-    title: '작은 성취',
-    content: '어려웠던 문제를 해결했다. 생각보다 뿌듯하고 내일도 한 걸음 더 나아가고 싶다.',
-    createdAt: '2026. 09. 26',
-    emotion: 'JOY',
-    intensity: 4,
-  },
-  {
-    id: 3,
-    title: '복잡했던 마음',
-    content: '계획대로 되지 않아 걱정이 많았지만, 잠시 쉬면서 다시 우선순위를 정해 보기로 했다.',
-    createdAt: '2026. 09. 25',
-    emotion: 'ANXIETY',
-    intensity: 3,
-  },
-]
-
-type View = 'home' | 'list' | 'write' | 'detail'
+type View = 'home' | 'list' | 'write' | 'detail' | 'login' | 'signup'
 
 export default function App() {
-  const [diaries, setDiaries] = useState<Diary[]>(initialDiaries)
+  const [isSavingDiary, setIsSavingDiary] = useState(false)
+  const [diarySaveError, setDiarySaveError] = useState('')
   const [view, setView] = useState<View>('home')
-  const [selectedId, setSelectedId] = useState(1)
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
 
-  const selectedDiary = diaries.find((diary) => diary.id === selectedId) ?? diaries[0]
-  const recentDiaries = useMemo(() => diaries.slice(0, 3), [diaries])
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [nickname, setNickname] = useState('')
+  const [loginError, setLoginError] = useState('')
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
+  const [signupError, setSignupError] = useState('')
+  const [isSigningUp, setIsSigningUp] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(hasAccessToken())
 
-  function openDetail(id: number) {
-    setSelectedId(id)
-    setView('detail')
-  }
+  const [realDiaries, setRealDiaries] = useState<DiarySummary[]>([])
+  const [selectedRealDiary, setSelectedRealDiary] = useState<DiaryDetail | null>(null)
+    const [latestAnalysis, setLatestAnalysis] =
+        useState<EmotionAnalysisResponse | null>(null)
+    const [isAnalyzing, setIsAnalyzing] = useState(false)
+    const [analysisError, setAnalysisError] = useState('')
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false)
+  const [detailLoadError, setDetailLoadError] = useState('')
+  const [isDeletingDiary, setIsDeletingDiary] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const [isLoadingDiaries, setIsLoadingDiaries] = useState(false)
+  const [diaryLoadError, setDiaryLoadError] = useState('')
+  const todayLabel = new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  }).format(new Date())
 
-  function saveDiary(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!title.trim() || !content.trim()) return
+  useEffect(() => {
+    if (!isLoggedIn) return
 
-    const diary: Diary = {
-      id: Date.now(),
-      title: title.trim(),
-      content: content.trim(),
-      createdAt: new Intl.DateTimeFormat('ko-KR', {
-        year: 'numeric', month: '2-digit', day: '2-digit',
-      }).format(new Date()).replace(/\. /g, '. ').replace(/\.$/, ''),
-      emotion: 'CALM',
-      intensity: 3,
+    async function loadDiaries() {
+      setIsLoadingDiaries(true)
+      setDiaryLoadError('')
+
+      try {
+        const response = await getDiaries()
+        setRealDiaries(response.content)
+      } catch (error) {
+        if (error instanceof ApiError) {
+          setDiaryLoadError(`${error.message} (${error.status})`)
+        } else {
+          setDiaryLoadError('일기 목록을 불러오지 못했습니다.')
+        }
+      } finally {
+        setIsLoadingDiaries(false)
+      }
     }
 
-    setDiaries((previous) => [diary, ...previous])
-    setTitle('')
-    setContent('')
-    setSelectedId(diary.id)
-    setView('detail')
+    loadDiaries()
+  }, [isLoggedIn])
+
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setLoginError('')
+    setIsLoggingIn(true)
+
+    try {
+      await login(email, password)
+      setIsLoggedIn(true)
+      setView('home')
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setLoginError(`${error.message} (${error.status})`)
+      } else {
+        console.error('로그인 실패:', error)
+
+        if (error instanceof Error) {
+          setLoginError(error.message)
+        } else {
+          setLoginError('로그인 중 알 수 없는 오류가 발생했습니다.')
+        }
+      }
+    } finally {
+      setIsLoggingIn(false)
+    }
   }
 
-  function deleteDiary() {
-    setDiaries((previous) => previous.filter((diary) => diary.id !== selectedDiary.id))
-    setView('list')
+  async function handleSignup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSignupError('')
+    setIsSigningUp(true)
+
+    try {
+      await signup(email, password, nickname)
+      setIsLoggedIn(true)
+      setView('home')
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setSignupError(`${error.message} (${error.status})`)
+      } else {
+        setSignupError('회원가입 중 오류가 발생했습니다.')
+      }
+    } finally {
+      setIsSigningUp(false)
+    }
   }
 
+  function handleLogout() {
+    logout()
+    setIsLoggedIn(false)
+    setRealDiaries([])
+    setSelectedRealDiary(null)
+    setLatestAnalysis(null)
+    setView('home')
+  }
+    async function openDetail(id: number) {
+        setView('detail')
+        setSelectedRealDiary(null)
+        setLatestAnalysis(null)
+        setDetailLoadError('')
+        setAnalysisError('')
+        setIsLoadingDetail(true)
+
+        try {
+            const diary = await getDiary(id)
+            setSelectedRealDiary(diary)
+
+            try {
+                const analysis = await getLatestAnalysis(id)
+                setLatestAnalysis(analysis)
+            } catch (error) {
+                if (error instanceof ApiError && error.status !== 404) {
+                    setAnalysisError(`${error.message} (${error.status})`)
+                }
+            }
+        } catch (error) {
+            if (error instanceof ApiError) {
+                setDetailLoadError(`${error.message} (${error.status})`)
+            } else {
+                setDetailLoadError('일기 상세 내용을 불러오지 못했습니다.')
+            }
+        } finally {
+            setIsLoadingDetail(false)
+        }
+    }
+
+  async function saveDiary(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!title.trim() || !content.trim()) return
+
+    setDiarySaveError('')
+    setIsSavingDiary(true)
+
+    try {
+      const created = await createDiary(title.trim(), content.trim())
+
+      setRealDiaries((previous) => [
+        {
+          id: created.id,
+          title: created.title,
+          createdAt: created.createdAt,
+        },
+        ...previous,
+      ])
+
+      setSelectedRealDiary({
+        id: created.id,
+        title: created.title,
+        content: created.content,
+        createdAt: created.createdAt,
+        updatedAt: null,
+      })
+      setLatestAnalysis(null)
+      setDetailLoadError('')
+      setAnalysisError('')
+      setTitle('')
+      setContent('')
+      setView('detail')
+
+      await runAnalysis(created.id)
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setDiarySaveError(`${error.message} (${error.status})`)
+      } else {
+        setDiarySaveError('일기 저장 중 오류가 발생했습니다.')
+      }
+    } finally {
+      setIsSavingDiary(false)
+    }
+  }
+
+  async function handleDeleteDiary() {
+    if (!selectedRealDiary) return
+
+    const confirmed = window.confirm('이 일기를 삭제할까요?')
+    if (!confirmed) return
+
+    setDeleteError('')
+    setIsDeletingDiary(true)
+
+    try {
+      await deleteDiaryRequest(selectedRealDiary.id)
+
+      setRealDiaries((previous) =>
+          previous.filter((diary) => diary.id !== selectedRealDiary.id),
+      )
+
+      setSelectedRealDiary(null)
+      setView('list')
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setDeleteError(`${error.message} (${error.status})`)
+      } else {
+        setDeleteError('일기 삭제 중 오류가 발생했습니다.')
+      }
+    } finally {
+      setIsDeletingDiary(false)
+    }
+  }
+  async function runAnalysis(diaryId: number) {
+    setAnalysisError('')
+    setIsAnalyzing(true)
+
+    try {
+      const analysis = await analyzeDiary(diaryId)
+      setLatestAnalysis(analysis)
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setAnalysisError(`${error.message} (${error.status})`)
+      } else {
+        setAnalysisError('감정 분석 중 오류가 발생했습니다.')
+      }
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
+  async function handleAnalyze() {
+    if (!selectedRealDiary) return
+
+    await runAnalysis(selectedRealDiary.id)
+  }
   return (
     <main className="app-shell">
       <header className="top-bar">
@@ -98,14 +278,130 @@ export default function App() {
           <span className="brand-mark">✦</span>
           <span>AI Diary</span>
         </button>
-        <button className="profile-button" aria-label="프로필">민</button>
+        <div className="header-actions">
+          {isLoggedIn && (
+            <button className="logout-button" type="button" onClick={handleLogout}>
+              로그아웃
+            </button>
+          )}
+
+          <button
+              className="profile-button"
+              onClick={() => setView(isLoggedIn ? 'home' : 'login')}
+              aria-label="로그인"
+          >
+            {isLoggedIn ? '민' : '로그인'}
+          </button>
+        </div>
       </header>
 
       <section className="content">
+        {view === 'login' && (
+            <section className="page-section">
+              <button className="back-button" onClick={() => setView('home')}>
+                ← 돌아가기
+              </button>
+
+              <p className="eyebrow">WELCOME BACK</p>
+              <h1>다시 만나서<br />반가워요</h1>
+
+              <form className="diary-form" onSubmit={handleLogin}>
+                <label>
+                  이메일
+                  <input
+                      type="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="example@email.com"
+                      required
+                  />
+                </label>
+
+                <label>
+                  비밀번호
+                  <input
+                      type="password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder="비밀번호를 입력하세요"
+                      required
+                  />
+                </label>
+
+                {loginError && <p className="login-error">{loginError}</p>}
+
+                <button className="primary-button" type="submit" disabled={isLoggingIn}>
+                  {isLoggingIn ? '로그인 중...' : '로그인하기'}
+                </button>
+
+                <p className="auth-switch">
+                  아직 계정이 없나요?{' '}
+                  <button type="button" onClick={() => setView('signup')}>
+                    회원가입하기
+                  </button>
+                </p>
+              </form>
+            </section>
+        )}
+
+        {view === 'signup' && (
+          <section className="page-section">
+            <button className="back-button" onClick={() => setView('login')}>
+              ← 로그인으로
+            </button>
+
+            <p className="eyebrow">CREATE ACCOUNT</p>
+            <h1>나만의 감정 기록을<br />시작해요</h1>
+
+            <form className="diary-form" onSubmit={handleSignup}>
+              <label>
+                이메일
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="example@email.com"
+                  required
+                />
+              </label>
+
+              <label>
+                비밀번호
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="8자 이상 입력하세요"
+                  minLength={8}
+                  required
+                />
+              </label>
+
+              <label>
+                닉네임
+                <input
+                  value={nickname}
+                  onChange={(event) => setNickname(event.target.value)}
+                  placeholder="서비스에서 사용할 이름"
+                  minLength={2}
+                  maxLength={100}
+                  required
+                />
+              </label>
+
+              {signupError && <p className="login-error">{signupError}</p>}
+
+              <button className="primary-button" type="submit" disabled={isSigningUp}>
+                {isSigningUp ? '가입 중...' : '회원가입하고 시작하기'}
+              </button>
+            </form>
+          </section>
+        )}
+
         {view === 'home' && (
           <>
             <div className="hero">
-              <p className="eyebrow">SATURDAY, SEPTEMBER 27</p>
+              <p className="eyebrow">{todayLabel}</p>
               <h1>오늘의 마음은<br />어떤가요?</h1>
               <p>짧은 기록도 괜찮아요. 오늘의 감정을 AI와 함께 돌아봐요.</p>
               <button className="primary-button" onClick={() => setView('write')}>오늘의 일기 쓰기 <span>→</span></button>
@@ -126,9 +422,42 @@ export default function App() {
             </section>
 
             <section className="section-block">
-              <div className="section-heading"><div><p className="eyebrow">RECENT DIARIES</p><h2>최근 기록</h2></div></div>
+              <div className="section-heading">
+                <div><p className="eyebrow">RECENT DIARIES</p><h2>최근 기록</h2></div>
+                <button className="text-button" onClick={() => setView('list')}>더보기 →</button>
+              </div>
               <div className="diary-list">
-                {recentDiaries.map((diary) => <DiaryCard key={diary.id} diary={diary} onClick={() => openDetail(diary.id)} />)}
+                {!isLoggedIn && <p>로그인하면 최근 기록을 확인할 수 있어요.</p>}
+
+                {isLoggedIn && isLoadingDiaries && (
+                  <p>최근 기록을 불러오는 중이에요...</p>
+                )}
+
+                {isLoggedIn && diaryLoadError && (
+                  <p className="login-error">{diaryLoadError}</p>
+                )}
+
+                {isLoggedIn && !isLoadingDiaries && !diaryLoadError && realDiaries.length === 0 && (
+                  <p>아직 작성한 일기가 없어요.</p>
+                )}
+
+                {isLoggedIn && !isLoadingDiaries && !diaryLoadError &&
+                  realDiaries.slice(0, 3).map((diary) => (
+                    <button
+                      type="button"
+                      className="diary-card"
+                      key={diary.id}
+                      onClick={() => openDetail(diary.id)}
+                    >
+                      <span className="emotion-icon small">📖</span>
+                      <span className="diary-card-copy">
+                        <small>{new Date(diary.createdAt).toLocaleDateString('ko-KR')}</small>
+                        <strong>{diary.title ?? '제목 없는 일기'}</strong>
+                        <span>상세 화면에서 감정 분석 결과를 확인해요.</span>
+                      </span>
+                      <span className="arrow">›</span>
+                    </button>
+                  ))}
               </div>
             </section>
           </>
@@ -137,7 +466,36 @@ export default function App() {
         {view === 'list' && (
           <section className="page-section">
             <p className="eyebrow">MY ARCHIVE</p><h1>나의 일기</h1>
-            <div className="diary-list">{diaries.map((diary) => <DiaryCard key={diary.id} diary={diary} onClick={() => openDetail(diary.id)} />)}</div>
+            <div className="diary-list">
+              {isLoadingDiaries && <p>일기를 불러오는 중이에요...</p>}
+
+              {diaryLoadError && (
+                  <p className="login-error">{diaryLoadError}</p>
+              )}
+
+              {!isLoadingDiaries && !diaryLoadError && realDiaries.length === 0 && (
+                  <p>아직 작성한 일기가 없어요.</p>
+              )}
+
+              {!isLoadingDiaries && !diaryLoadError &&
+                  realDiaries.map((diary) => (
+                      <button
+                          type="button"
+                          className="diary-card"
+                          key={diary.id}
+                          onClick={() => openDetail(diary.id)}
+                      >
+                        <span className="emotion-icon small">📖</span>
+
+                        <span className="diary-card-copy">
+          <small>
+            {new Date(diary.createdAt).toLocaleDateString('ko-KR')}
+          </small>
+          <strong>{diary.title ?? '제목 없는 일기'}</strong>
+        </span>
+                      </button>
+                  ))}
+            </div>
           </section>
         )}
 
@@ -148,25 +506,140 @@ export default function App() {
             <form className="diary-form" onSubmit={saveDiary}>
               <label>제목<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="오늘을 한마디로 표현하면?" maxLength={255} /></label>
               <label>내용<textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder="오늘 있었던 일과 마음을 자유롭게 적어주세요." rows={10} /></label>
-              <p className="form-note">저장 후 AI가 감정과 짧은 피드백을 준비해요.</p>
-              <button className="primary-button" type="submit">일기 저장하기 <span>→</span></button>
+              <p className="form-note">
+                저장 후 AI가 감정과 짧은 피드백을 준비해요.
+              </p>
+
+              {diarySaveError && (
+                  <p className="login-error">{diarySaveError}</p>
+              )}
+
+              <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={isSavingDiary}
+              >
+                {isSavingDiary ? '저장 중...' : '일기 저장하기'}
+                {!isSavingDiary && <span>→</span>}
+              </button>
             </form>
           </section>
         )}
 
-        {view === 'detail' && selectedDiary && (
-          <section className="page-section detail-page">
-            <button className="back-button" onClick={() => setView('list')}>← 목록으로</button>
-            <p className="eyebrow">{selectedDiary.createdAt}</p><h1>{selectedDiary.title}</h1>
-            <p className="diary-content">{selectedDiary.content}</p>
-            <section className="analysis-card">
-              <p className="eyebrow">AI EMOTION ANALYSIS</p>
-              <div className="analysis-header"><span className="emotion-icon">{emotionInfo[selectedDiary.emotion].icon}</span><div><strong>{emotionInfo[selectedDiary.emotion].label}</strong><p>감정 강도 {selectedDiary.intensity} / 5</p></div></div>
-              <p className="feedback">오늘의 기록에서 차분하게 상황을 돌아보려는 마음이 느껴져요. 스스로에게도 충분히 다정한 하루였으면 해요.</p>
+        {view === 'detail' && (
+            <section className="page-section detail-page">
+              <button className="back-button" onClick={() => setView('list')}>
+                ← 목록으로
+              </button>
+
+              {isLoadingDetail && <p>일기 내용을 불러오는 중이에요...</p>}
+
+              {detailLoadError && (
+                  <p className="login-error">{detailLoadError}</p>
+              )}
+
+              {selectedRealDiary && (
+                  <>
+                    <p className="eyebrow">
+                      {new Date(selectedRealDiary.createdAt).toLocaleDateString('ko-KR')}
+                    </p>
+
+                    <h1>{selectedRealDiary.title ?? '제목 없는 일기'}</h1>
+
+                    <p className="diary-content">{selectedRealDiary.content}</p>
+
+                    {selectedRealDiary.updatedAt && (
+                        <p className="form-note">
+                          수정일: {new Date(selectedRealDiary.updatedAt).toLocaleDateString('ko-KR')}
+                        </p>
+                    )}
+
+                      <section className="analysis-card">
+                          <p className="eyebrow">AI EMOTION ANALYSIS</p>
+
+                          {latestAnalysis ? (
+                              <>
+                                  <div className="analysis-header">
+        <span className="emotion-icon">
+          {emotionInfo[latestAnalysis.emotion].icon}
+        </span>
+
+                                      <div>
+                                          <strong>{emotionInfo[latestAnalysis.emotion].label}</strong>
+                                          <p>대표 감정 강도 {latestAnalysis.intensity} / 5</p>
+                                      </div>
+                                  </div>
+
+                                  <p className="feedback">{latestAnalysis.feedback}</p>
+
+                                  <section className="emotion-score-table" aria-label="감정별 점수">
+                                      <p className="score-table-title">감정별 점수</p>
+
+                                      {(Object.keys(emotionInfo) as Emotion[]).map((emotion) => {
+                                          const info = emotionInfo[emotion]
+                                          const score = latestAnalysis.scores[emotion] ?? 0
+
+                                          return (
+                                              <div className="emotion-score-row" key={emotion}>
+                                                  <span className="score-emotion-label">
+                                                      <span>{info.icon}</span>
+                                                      {info.label}
+                                                  </span>
+
+                                                  <span className="score-track" aria-hidden="true">
+                                                      <span
+                                                          className="score-fill"
+                                                          style={{ width: `${score * 20}%`, backgroundColor: info.color }}
+                                                      />
+                                                  </span>
+
+                                                  <strong className="score-value">{score} / 5</strong>
+                                              </div>
+                                          )
+                                      })}
+                                  </section>
+
+                                  <button
+                                      className="primary-button"
+                                      type="button"
+                                      onClick={handleAnalyze}
+                                      disabled={isAnalyzing}
+                                  >
+                                      {isAnalyzing ? '다시 분석 중...' : '다시 분석하기'}
+                                  </button>
+                              </>
+                          ) : (
+                              <button
+                                  className="primary-button"
+                                  type="button"
+                                  onClick={handleAnalyze}
+                                  disabled={isAnalyzing}
+                              >
+                                  {isAnalyzing ? '감정 분석 중...' : 'AI로 감정 분석하기'}
+                              </button>
+                          )}
+
+                          {analysisError && (
+                              <p className="login-error">{analysisError}</p>
+                          )}
+                      </section>
+                    {deleteError && (
+                      <p className="login-error">{deleteError}</p>
+                    )}
+
+                    <button
+                      className="delete-button"
+                      type="button"
+                      onClick={handleDeleteDiary}
+                      disabled={isDeletingDiary}
+                    >
+                      {isDeletingDiary ? '삭제 중...' : '이 일기 삭제하기'}
+                    </button>
+                  </>
+              )}
             </section>
-            <button className="delete-button" onClick={deleteDiary}>이 일기 삭제하기</button>
-          </section>
         )}
+
       </section>
 
       <nav className="bottom-nav">
@@ -176,13 +649,4 @@ export default function App() {
       </nav>
     </main>
   )
-}
-
-function DiaryCard({ diary, onClick }: { diary: Diary; onClick: () => void }) {
-  const info = emotionInfo[diary.emotion]
-  return <button className="diary-card" onClick={onClick}>
-    <span className="emotion-icon small">{info.icon}</span>
-    <span className="diary-card-copy"><small>{diary.createdAt}</small><strong>{diary.title}</strong><span>{diary.content}</span></span>
-    <span className="arrow">›</span>
-  </button>
 }

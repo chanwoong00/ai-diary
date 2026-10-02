@@ -18,6 +18,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Entity
 @Table(name = "emotion_analyses")
@@ -43,6 +44,21 @@ public class EmotionAnalysis {
     @Column(nullable = false)
     private Integer intensity;
 
+    @Column(name = "joy_score")
+    private Integer joyScore;
+
+    @Column(name = "sadness_score")
+    private Integer sadnessScore;
+
+    @Column(name = "anger_score")
+    private Integer angerScore;
+
+    @Column(name = "anxiety_score")
+    private Integer anxietyScore;
+
+    @Column(name = "calm_score")
+    private Integer calmScore;
+
     @Column(columnDefinition = "TEXT", nullable = false)
     private String feedback;
 
@@ -54,12 +70,18 @@ public class EmotionAnalysis {
             String source,
             Emotion emotion,
             Integer intensity,
+            Map<Emotion, Integer> scores,
             String feedback
     ) {
         this.diary = diary;
         this.source = source;
         this.emotion = emotion;
         this.intensity = intensity;
+        this.joyScore = scores.get(Emotion.JOY);
+        this.sadnessScore = scores.get(Emotion.SADNESS);
+        this.angerScore = scores.get(Emotion.ANGER);
+        this.anxietyScore = scores.get(Emotion.ANXIETY);
+        this.calmScore = scores.get(Emotion.CALM);
         this.feedback = feedback;
     }
 
