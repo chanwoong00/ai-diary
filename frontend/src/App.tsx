@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 
 import {
   ApiError,
@@ -7,6 +7,8 @@ import {
   getDiaries,
   hasAccessToken,
   login,
+  logout,
+  signup,
   getDiary,
     analyzeDiary,
     getLatestAnalysis,
@@ -18,15 +20,6 @@ import './App.css'
 
 type Emotion = 'JOY' | 'SADNESS' | 'ANGER' | 'ANXIETY' | 'CALM'
 
-type Diary = {
-  id: number
-  title: string
-  content: string
-  createdAt: string
-  emotion: Emotion
-  intensity: number
-}
-
 const emotionInfo: Record<Emotion, { label: string; icon: string; color: string }> = {
   JOY: { label: '기쁨', icon: '☀️', color: '#ef9b3d' },
   SADNESS: { label: '슬픔', icon: '🌧️', color: '#6686d8' },
@@ -35,47 +28,22 @@ const emotionInfo: Record<Emotion, { label: string; icon: string; color: string 
   CALM: { label: '평온', icon: '🌿', color: '#5f9d80' },
 }
 
-const initialDiaries: Diary[] = [
-  {
-    id: 1,
-    title: '천천히 정리한 하루',
-    content: '해야 할 일이 많았지만 하나씩 정리하니 마음이 조금 가벼워졌다. 오늘도 충분히 잘 해냈다.',
-    createdAt: '2026. 09. 27',
-    emotion: 'CALM',
-    intensity: 3,
-  },
-  {
-    id: 2,
-    title: '작은 성취',
-    content: '어려웠던 문제를 해결했다. 생각보다 뿌듯하고 내일도 한 걸음 더 나아가고 싶다.',
-    createdAt: '2026. 09. 26',
-    emotion: 'JOY',
-    intensity: 4,
-  },
-  {
-    id: 3,
-    title: '복잡했던 마음',
-    content: '계획대로 되지 않아 걱정이 많았지만, 잠시 쉬면서 다시 우선순위를 정해 보기로 했다.',
-    createdAt: '2026. 09. 25',
-    emotion: 'ANXIETY',
-    intensity: 3,
-  },
-]
-type View = 'home' | 'list' | 'write' | 'detail' | 'login'
+type View = 'home' | 'list' | 'write' | 'detail' | 'login' | 'signup'
 
 export default function App() {
   const [isSavingDiary, setIsSavingDiary] = useState(false)
   const [diarySaveError, setDiarySaveError] = useState('')
-  const [diaries, setDiaries] = useState<Diary[]>(initialDiaries)
   const [view, setView] = useState<View>('home')
-  const [selectedId, setSelectedId] = useState(1)
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [nickname, setNickname] = useState('')
   const [loginError, setLoginError] = useState('')
   const [isLoggingIn, setIsLoggingIn] = useState(false)
+  const [signupError, setSignupError] = useState('')
+  const [isSigningUp, setIsSigningUp] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(hasAccessToken())
 
   const [realDiaries, setRealDiaries] = useState<DiarySummary[]>([])
@@ -90,9 +58,12 @@ export default function App() {
   const [deleteError, setDeleteError] = useState('')
   const [isLoadingDiaries, setIsLoadingDiaries] = useState(false)
   const [diaryLoadError, setDiaryLoadError] = useState('')
-
-  const selectedDiary = diaries.find((diary) => diary.id === selectedId) ?? diaries[0]
-  const recentDiaries = useMemo(() => diaries.slice(0, 3), [diaries])
+  const todayLabel = new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  }).format(new Date())
 
   useEffect(() => {
     if (!isLoggedIn) return
@@ -142,6 +113,35 @@ export default function App() {
     } finally {
       setIsLoggingIn(false)
     }
+  }
+
+  async function handleSignup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSignupError('')
+    setIsSigningUp(true)
+
+    try {
+      await signup(email, password, nickname)
+      setIsLoggedIn(true)
+      setView('home')
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setSignupError(`${error.message} (${error.status})`)
+      } else {
+        setSignupError('회원가입 중 오류가 발생했습니다.')
+      }
+    } finally {
+      setIsSigningUp(false)
+    }
+  }
+
+  function handleLogout() {
+    logout()
+    setIsLoggedIn(false)
+    setRealDiaries([])
+    setSelectedRealDiary(null)
+    setLatestAnalysis(null)
+    setView('home')
   }
     async function openDetail(id: number) {
         setView('detail')
@@ -278,13 +278,21 @@ export default function App() {
           <span className="brand-mark">✦</span>
           <span>AI Diary</span>
         </button>
-        <button
-            className="profile-button"
-            onClick={() => setView(isLoggedIn ? 'home' : 'login')}
-            aria-label="로그인"
-        >
-          {isLoggedIn ? '민' : '로그인'}
-        </button>
+        <div className="header-actions">
+          {isLoggedIn && (
+            <button className="logout-button" type="button" onClick={handleLogout}>
+              로그아웃
+            </button>
+          )}
+
+          <button
+              className="profile-button"
+              onClick={() => setView(isLoggedIn ? 'home' : 'login')}
+              aria-label="로그인"
+          >
+            {isLoggedIn ? '민' : '로그인'}
+          </button>
+        </div>
       </header>
 
       <section className="content">
@@ -325,13 +333,75 @@ export default function App() {
                 <button className="primary-button" type="submit" disabled={isLoggingIn}>
                   {isLoggingIn ? '로그인 중...' : '로그인하기'}
                 </button>
+
+                <p className="auth-switch">
+                  아직 계정이 없나요?{' '}
+                  <button type="button" onClick={() => setView('signup')}>
+                    회원가입하기
+                  </button>
+                </p>
               </form>
             </section>
         )}
+
+        {view === 'signup' && (
+          <section className="page-section">
+            <button className="back-button" onClick={() => setView('login')}>
+              ← 로그인으로
+            </button>
+
+            <p className="eyebrow">CREATE ACCOUNT</p>
+            <h1>나만의 감정 기록을<br />시작해요</h1>
+
+            <form className="diary-form" onSubmit={handleSignup}>
+              <label>
+                이메일
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="example@email.com"
+                  required
+                />
+              </label>
+
+              <label>
+                비밀번호
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="8자 이상 입력하세요"
+                  minLength={8}
+                  required
+                />
+              </label>
+
+              <label>
+                닉네임
+                <input
+                  value={nickname}
+                  onChange={(event) => setNickname(event.target.value)}
+                  placeholder="서비스에서 사용할 이름"
+                  minLength={2}
+                  maxLength={100}
+                  required
+                />
+              </label>
+
+              {signupError && <p className="login-error">{signupError}</p>}
+
+              <button className="primary-button" type="submit" disabled={isSigningUp}>
+                {isSigningUp ? '가입 중...' : '회원가입하고 시작하기'}
+              </button>
+            </form>
+          </section>
+        )}
+
         {view === 'home' && (
           <>
             <div className="hero">
-              <p className="eyebrow">SATURDAY, SEPTEMBER 27</p>
+              <p className="eyebrow">{todayLabel}</p>
               <h1>오늘의 마음은<br />어떤가요?</h1>
               <p>짧은 기록도 괜찮아요. 오늘의 감정을 AI와 함께 돌아봐요.</p>
               <button className="primary-button" onClick={() => setView('write')}>오늘의 일기 쓰기 <span>→</span></button>
@@ -352,9 +422,42 @@ export default function App() {
             </section>
 
             <section className="section-block">
-              <div className="section-heading"><div><p className="eyebrow">RECENT DIARIES</p><h2>최근 기록</h2></div></div>
+              <div className="section-heading">
+                <div><p className="eyebrow">RECENT DIARIES</p><h2>최근 기록</h2></div>
+                <button className="text-button" onClick={() => setView('list')}>더보기 →</button>
+              </div>
               <div className="diary-list">
-                {recentDiaries.map((diary) => <DiaryCard key={diary.id} diary={diary} onClick={() => openDetail(diary.id)} />)}
+                {!isLoggedIn && <p>로그인하면 최근 기록을 확인할 수 있어요.</p>}
+
+                {isLoggedIn && isLoadingDiaries && (
+                  <p>최근 기록을 불러오는 중이에요...</p>
+                )}
+
+                {isLoggedIn && diaryLoadError && (
+                  <p className="login-error">{diaryLoadError}</p>
+                )}
+
+                {isLoggedIn && !isLoadingDiaries && !diaryLoadError && realDiaries.length === 0 && (
+                  <p>아직 작성한 일기가 없어요.</p>
+                )}
+
+                {isLoggedIn && !isLoadingDiaries && !diaryLoadError &&
+                  realDiaries.slice(0, 3).map((diary) => (
+                    <button
+                      type="button"
+                      className="diary-card"
+                      key={diary.id}
+                      onClick={() => openDetail(diary.id)}
+                    >
+                      <span className="emotion-icon small">📖</span>
+                      <span className="diary-card-copy">
+                        <small>{new Date(diary.createdAt).toLocaleDateString('ko-KR')}</small>
+                        <strong>{diary.title ?? '제목 없는 일기'}</strong>
+                        <span>상세 화면에서 감정 분석 결과를 확인해요.</span>
+                      </span>
+                      <span className="arrow">›</span>
+                    </button>
+                  ))}
               </div>
             </section>
           </>
@@ -463,11 +566,38 @@ export default function App() {
 
                                       <div>
                                           <strong>{emotionInfo[latestAnalysis.emotion].label}</strong>
-                                          <p>감정 강도 {latestAnalysis.intensity} / 5</p>
+                                          <p>대표 감정 강도 {latestAnalysis.intensity} / 5</p>
                                       </div>
                                   </div>
 
                                   <p className="feedback">{latestAnalysis.feedback}</p>
+
+                                  <section className="emotion-score-table" aria-label="감정별 점수">
+                                      <p className="score-table-title">감정별 점수</p>
+
+                                      {(Object.keys(emotionInfo) as Emotion[]).map((emotion) => {
+                                          const info = emotionInfo[emotion]
+                                          const score = latestAnalysis.scores[emotion] ?? 0
+
+                                          return (
+                                              <div className="emotion-score-row" key={emotion}>
+                                                  <span className="score-emotion-label">
+                                                      <span>{info.icon}</span>
+                                                      {info.label}
+                                                  </span>
+
+                                                  <span className="score-track" aria-hidden="true">
+                                                      <span
+                                                          className="score-fill"
+                                                          style={{ width: `${score * 20}%`, backgroundColor: info.color }}
+                                                      />
+                                                  </span>
+
+                                                  <strong className="score-value">{score} / 5</strong>
+                                              </div>
+                                          )
+                                      })}
+                                  </section>
 
                                   <button
                                       className="primary-button"
@@ -519,13 +649,4 @@ export default function App() {
       </nav>
     </main>
   )
-}
-
-function DiaryCard({ diary, onClick }: { diary: Diary; onClick: () => void }) {
-  const info = emotionInfo[diary.emotion]
-  return <button className="diary-card" onClick={onClick}>
-    <span className="emotion-icon small">{info.icon}</span>
-    <span className="diary-card-copy"><small>{diary.createdAt}</small><strong>{diary.title}</strong><span>{diary.content}</span></span>
-    <span className="arrow">›</span>
-  </button>
 }

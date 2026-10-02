@@ -21,3 +21,138 @@
     cursor: not-allowed;
     opacity: 0.6;
 }
+
+.emotion-score-table {
+    display: grid;
+    gap: 11px;
+    margin-top: 22px;
+    padding: 16px;
+    border: 1px solid #dedff3;
+    border-radius: 16px;
+    background: #ffffffa8;
+}
+
+.score-table-title {
+    margin: 0 0 2px;
+    color: #62668b;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.emotion-score-row {
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr) 36px;
+    align-items: center;
+    gap: 9px;
+}
+
+.score-emotion-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: #555a73;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.score-track {
+    height: 9px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #e7e8f5;
+}
+
+.score-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    transition: width 0.35s ease;
+}
+
+.score-value {
+    color: #656a85;
+    font-size: 11px;
+    text-align: right;
+}
+
+.auth-switch {
+    margin: 2px 0 0;
+    color: #7d8198;
+    font-size: 13px;
+    text-align: center;
+}
+
+.auth-switch button {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: #5862d6;
+    font: inherit;
+    font-weight: 800;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.logout-button {
+    border: 0;
+    border-radius: 999px;
+    padding: 7px 10px;
+    background: #f2f3fa;
+    color: #6d718a;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+/* 모바일 앱 화면처럼 홈의 세로 공간과 하단 안전 영역을 사용한다. */
+.app-shell {
+    min-height: 100dvh;
+}
+
+.content {
+    padding: 0 18px calc(96px + env(safe-area-inset-bottom));
+}
+
+.hero {
+    display: flex;
+    min-height: 292px;
+    margin: 0 -18px 32px;
+    padding: 44px 24px 38px;
+    flex-direction: column;
+    justify-content: center;
+    background:
+        radial-gradient(circle at 88% 12%, #dce0ff 0, transparent 34%),
+        linear-gradient(145deg, #f4f5ff 0%, #eef6f4 100%);
+}
+
+.hero .eyebrow {
+    color: #5961a8;
+}
+
+.hero h1 {
+    max-width: 360px;
+}
+
+.hero > p:not(.eyebrow) {
+    max-width: 320px;
+}
+
+.section-block {
+    margin: 0 0 38px;
+}
+
+.bottom-nav {
+    height: calc(72px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+@media (min-width: 721px) {
+    .hero {
+        margin-right: -20px;
+        margin-left: -20px;
+        border-radius: 24px 24px 0 0;
+    }
+}

@@ -41,6 +41,7 @@ export type EmotionAnalysisResponse = {
   source: string
   emotion: 'JOY' | 'SADNESS' | 'ANGER' | 'ANXIETY' | 'CALM'
   intensity: number
+  scores: Record<'JOY' | 'SADNESS' | 'ANGER' | 'ANXIETY' | 'CALM', number>
   feedback: string
   createdAt: string
 }
