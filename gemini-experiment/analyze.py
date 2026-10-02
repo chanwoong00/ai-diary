@@ -16,12 +16,19 @@ SYSTEM_INSTRUCTION = f"""당신은 사용자의 일기를 읽고 감정을 분�
 반드시 아래 JSON 형식으로만 응답하세요. 다른 설명, 인사말, 마크다운 코드블록 없이 JSON 객체만 출력합니다.
 
 {{
-  "emotion": {EMOTIONS} 중 하나,
-  "score": 감정 강도를 나타내는 1~5 사이의 정수,
+  "emotion": {EMOTIONS} 중 가장 두드러지는 감정 하나,
+  "score": 그 감정을 느낀 강도를 나타내는 1~5 사이의 정수,
+  "scores": {{
+    "기쁨": 0~5 정수, "슬픔": 0~5 정수, "분노": 0~5 정수, "불안": 0~5 정수, "평온": 0~5 정수
+  }},
   "feedback": 일기 원문을 근거로 왜 이런 감정을 느꼈는지 설명하는 글 (한국어, 4~6문장)
 }}
 
 emotion은 반드시 위 5종 라벨 중 하나여야 하며, 그 외의 값을 사용하지 마세요.
+
+scores는 일기에서 5종 감정 각각을 얼마나 느꼈는지 따로 평가한 것입니다. 전혀 안 느꼈으면 0, 아주 강하게
+느꼈으면 5입니다. 일기에 감정이 하나만 뚜렷하면 나머지는 0에 가깝게, 여러 감정이 섞여 있으면 해당하는
+감정들에 고르게 점수를 매기세요. scores 중 emotion과 같은 항목의 점수는 score와 동일해야 합니다.
 
 feedback을 작성할 때는 다음을 지키세요:
 - 단순히 위로하거나 공감만 하고 끝내지 마세요. 목적은 사용자가 자신의 감정을 스스로 더 잘 이해하도록
@@ -43,9 +50,14 @@ RESPONSE_SCHEMA = {
     "properties": {
         "emotion": {"type": "string", "enum": EMOTIONS},
         "score": {"type": "integer", "minimum": 1, "maximum": 5},
+        "scores": {
+            "type": "object",
+            "properties": {e: {"type": "integer", "minimum": 0, "maximum": 5} for e in EMOTIONS},
+            "required": EMOTIONS,
+        },
         "feedback": {"type": "string", "maxLength": 700},
     },
-    "required": ["emotion", "score", "feedback"],
+    "required": ["emotion", "score", "scores", "feedback"],
 }
 
 
@@ -81,9 +93,20 @@ def analyze_diary(diary_text: str) -> dict:
     if not isinstance(score, int) or not (1 <= score <= 5):
         raise ValueError(f"score가 1~5 정수가 아닙니다: {score!r}")
 
+    scores = result.get("scores")
+    if not isinstance(scores, dict) or set(scores.keys()) != set(EMOTIONS):
+        raise ValueError(f"scores에 5종 감정이 전부 들어있지 않습니다: {scores!r}")
+    for emotion, value in scores.items():
+        if not isinstance(value, int) or not (0 <= value <= 5):
+            raise ValueError(f"scores['{emotion}']이 0~5 정수가 아닙니다: {value!r}")
+
     return result
 
 
 if __name__ == "__main__":
-    sample = "오늘 팀 프로젝트 발표를 무사히 마쳤다. 며칠 동안 준비하느라 긴장했는데 끝나고 나니 마음이 한결 가벼워졌다."
-    print(json.dumps(analyze_diary(sample), ensure_ascii=False, indent=2))
+    import sys
+
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    diary_text = input("일기를 입력하세요: ")
+    result = analyze_diary(diary_text)
+    print(json.dumps(result, ensure_ascii=False, indent=2))

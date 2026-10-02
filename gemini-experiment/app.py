@@ -20,9 +20,18 @@ class AnalyzeRequest(BaseModel):
     content: str = Field(..., min_length=1)
 
 
+class EmotionScores(BaseModel):
+    JOY: int = Field(..., ge=0, le=5)
+    SADNESS: int = Field(..., ge=0, le=5)
+    ANGER: int = Field(..., ge=0, le=5)
+    ANXIETY: int = Field(..., ge=0, le=5)
+    CALM: int = Field(..., ge=0, le=5)
+
+
 class AnalyzeResponse(BaseModel):
     emotion: Literal["JOY", "SADNESS", "ANGER", "ANXIETY", "CALM"]
     intensity: int = Field(..., ge=1, le=5)
+    scores: EmotionScores
     feedback: str
 
 
@@ -41,5 +50,6 @@ def analyze(request: AnalyzeRequest) -> dict:
     return {
         "emotion": EMOTION_CODES[result["emotion"]],
         "intensity": result["score"],
+        "scores": {EMOTION_CODES[k]: v for k, v in result["scores"].items()},
         "feedback": result["feedback"],
     }
