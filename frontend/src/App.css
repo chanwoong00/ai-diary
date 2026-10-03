@@ -107,6 +107,97 @@
     font-weight: 700;
 }
 
+.calendar-card {
+    margin: 0 0 28px;
+    padding: 16px;
+    border: 1px solid #ececf4;
+    border-radius: 20px;
+    background: #ffffff;
+    box-shadow: 0 10px 26px #2f31510a;
+}
+
+.calendar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+    color: #3e4262;
+}
+
+.calendar-header button {
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 10px;
+    background: #f4f5fb;
+    color: #5f66be;
+    font-size: 25px;
+    line-height: 1;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+}
+
+.calendar-weekdays {
+    margin-bottom: 7px;
+    color: #9497ae;
+    font-size: 11px;
+    text-align: center;
+}
+
+.calendar-weekdays span:first-child {
+    color: #da7a83;
+}
+
+.calendar-day,
+.calendar-empty {
+    height: 42px;
+}
+
+.calendar-day {
+    position: relative;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: #4d5067;
+    font-size: 13px;
+}
+
+.calendar-day.today {
+    box-shadow: inset 0 0 0 1px #8990e8;
+}
+
+.calendar-day.has-diary {
+    background: #f0f1ff;
+    color: #5059c2;
+    font-weight: 800;
+}
+
+.calendar-day.selected {
+    background: #5862d6;
+    color: #ffffff;
+    box-shadow: 0 5px 12px #5862d640;
+}
+
+.calendar-day small {
+    position: absolute;
+    right: 5px;
+    bottom: 4px;
+    min-width: 12px;
+    color: inherit;
+    font-size: 8px;
+}
+
+.calendar-records {
+    margin-bottom: 0;
+}
+
 /* 모바일 앱 화면처럼 홈의 세로 공간과 하단 안전 영역을 사용한다. */
 .app-shell {
     min-height: 100dvh;

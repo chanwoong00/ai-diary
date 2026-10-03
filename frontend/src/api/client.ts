@@ -46,6 +46,16 @@ export type EmotionAnalysisResponse = {
   createdAt: string
 }
 
+export type EmotionTrendItem = {
+  date: string
+  scores: Record<'JOY' | 'SADNESS' | 'ANGER' | 'ANXIETY' | 'CALM', number>
+}
+
+export type EmotionTrendResponse = {
+  days: number
+  trends: EmotionTrendItem[]
+}
+
 export type DiaryPage = {
   content: DiarySummary[]
   page: number
@@ -132,4 +142,8 @@ export function getLatestAnalysis(diaryId: number) {
   return request<EmotionAnalysisResponse>(
       `/api/diaries/${diaryId}/analyses/latest`,
   )
+}
+
+export function getEmotionTrends(days = 7) {
+  return request<EmotionTrendResponse>(`/api/emotions/trends?days=${days}`)
 }

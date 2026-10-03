@@ -10,9 +10,11 @@ import {
   logout,
   signup,
   getDiary,
-    analyzeDiary,
-    getLatestAnalysis,
-    type EmotionAnalysisResponse,
+  analyzeDiary,
+  getLatestAnalysis,
+  getEmotionTrends,
+  type EmotionAnalysisResponse,
+  type EmotionTrendResponse,
   type DiaryDetail,
   type DiarySummary,
 } from './api/client'
@@ -29,6 +31,21 @@ const emotionInfo: Record<Emotion, { label: string; icon: string; color: string 
 }
 
 type View = 'home' | 'list' | 'write' | 'detail' | 'login' | 'signup'
+
+function toDateKey(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function formatMonth(date: Date) {
+  return new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric',
+    month: 'long',
+  }).format(date)
+}
 
 export default function App() {
   const [isSavingDiary, setIsSavingDiary] = useState(false)
@@ -48,22 +65,47 @@ export default function App() {
 
   const [realDiaries, setRealDiaries] = useState<DiarySummary[]>([])
   const [selectedRealDiary, setSelectedRealDiary] = useState<DiaryDetail | null>(null)
-    const [latestAnalysis, setLatestAnalysis] =
-        useState<EmotionAnalysisResponse | null>(null)
-    const [isAnalyzing, setIsAnalyzing] = useState(false)
-    const [analysisError, setAnalysisError] = useState('')
+  const [latestAnalysis, setLatestAnalysis] =
+    useState<EmotionAnalysisResponse | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysisError, setAnalysisError] = useState('')
+  const [emotionTrend, setEmotionTrend] = useState<EmotionTrendResponse | null>(null)
+  const [isLoadingTrend, setIsLoadingTrend] = useState(false)
+  const [trendLoadError, setTrendLoadError] = useState('')
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
   const [detailLoadError, setDetailLoadError] = useState('')
   const [isDeletingDiary, setIsDeletingDiary] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [isLoadingDiaries, setIsLoadingDiaries] = useState(false)
   const [diaryLoadError, setDiaryLoadError] = useState('')
+  const [calendarMonth, setCalendarMonth] = useState(
+    () => new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+  )
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null)
   const todayLabel = new Intl.DateTimeFormat('ko-KR', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
     weekday: 'long',
   }).format(new Date())
+
+  async function loadEmotionTrend() {
+    setIsLoadingTrend(true)
+    setTrendLoadError('')
+
+    try {
+      const response = await getEmotionTrends(7)
+      setEmotionTrend(response)
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setTrendLoadError(`${error.message} (${error.status})`)
+      } else {
+        setTrendLoadError('감정 트렌드를 불러오지 못했습니다.')
+      }
+    } finally {
+      setIsLoadingTrend(false)
+    }
+  }
 
   useEffect(() => {
     if (!isLoggedIn) return
@@ -73,7 +115,7 @@ export default function App() {
       setDiaryLoadError('')
 
       try {
-        const response = await getDiaries()
+        const response = await getDiaries(0, 100)
         setRealDiaries(response.content)
       } catch (error) {
         if (error instanceof ApiError) {
@@ -87,6 +129,15 @@ export default function App() {
     }
 
     loadDiaries()
+  }, [isLoggedIn])
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setEmotionTrend(null)
+      return
+    }
+
+    void loadEmotionTrend()
   }, [isLoggedIn])
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -141,6 +192,7 @@ export default function App() {
     setRealDiaries([])
     setSelectedRealDiary(null)
     setLatestAnalysis(null)
+    setEmotionTrend(null)
     setView('home')
   }
     async function openDetail(id: number) {
@@ -255,6 +307,7 @@ export default function App() {
     try {
       const analysis = await analyzeDiary(diaryId)
       setLatestAnalysis(analysis)
+      await loadEmotionTrend()
     } catch (error) {
       if (error instanceof ApiError) {
         setAnalysisError(`${error.message} (${error.status})`)
@@ -271,6 +324,52 @@ export default function App() {
 
     await runAnalysis(selectedRealDiary.id)
   }
+
+  const hasTrendData = emotionTrend?.trends.some((trend) =>
+    Object.values(trend.scores).some((score) => score > 0),
+  ) ?? false
+
+  const dominantTrendEmotion = hasTrendData && emotionTrend
+    ? (Object.keys(emotionInfo) as Emotion[]).reduce((current, emotion) => {
+      const currentTotal = emotionTrend.trends.reduce(
+        (total, trend) => total + trend.scores[current],
+        0,
+      )
+      const emotionTotal = emotionTrend.trends.reduce(
+        (total, trend) => total + trend.scores[emotion],
+        0,
+      )
+
+      return emotionTotal > currentTotal ? emotion : current
+    }, 'JOY')
+    : null
+
+  const calendarStartDay = new Date(
+    calendarMonth.getFullYear(),
+    calendarMonth.getMonth(),
+    1,
+  ).getDay()
+  const calendarLastDate = new Date(
+    calendarMonth.getFullYear(),
+    calendarMonth.getMonth() + 1,
+    0,
+  ).getDate()
+  const calendarDates = [
+    ...Array<null>(calendarStartDay).fill(null),
+    ...Array.from({ length: calendarLastDate }, (_, index) => index + 1),
+  ]
+  const diariesByDate = realDiaries.reduce<Record<string, DiarySummary[]>>(
+    (result, diary) => {
+      const dateKey = toDateKey(new Date(diary.createdAt))
+      result[dateKey] = [...(result[dateKey] ?? []), diary]
+      return result
+    },
+    {},
+  )
+  const selectedDateDiaries = selectedCalendarDate
+    ? diariesByDate[selectedCalendarDate] ?? []
+    : []
+
   return (
     <main className="app-shell">
       <header className="top-bar">
@@ -413,12 +512,45 @@ export default function App() {
                 <button className="text-button" onClick={() => setView('list')}>전체 보기</button>
               </div>
               <div className="trend-card">
-                <div className="trend-icon">🌿</div>
-                <div><strong>평온한 흐름이에요</strong><p>최근 7일 동안 차분한 감정이 가장 많이 기록됐어요.</p></div>
+                <div className="trend-icon">{dominantTrendEmotion ? emotionInfo[dominantTrendEmotion].icon : '📊'}</div>
+                <div>
+                  <strong>
+                    {dominantTrendEmotion
+                      ? `최근에는 ${emotionInfo[dominantTrendEmotion].label} 감정이 두드러져요`
+                      : '아직 분석된 기록이 없어요'}
+                  </strong>
+                  <p>
+                    {dominantTrendEmotion
+                      ? '최근 7일 동안 기록된 감정 점수를 평균으로 보여줘요.'
+                      : '일기를 작성하고 AI 분석을 실행하면 감정 흐름이 나타나요.'}
+                  </p>
+                </div>
               </div>
-              <div className="bars" aria-label="최근 감정 강도 그래프">
-                {[42, 58, 36, 70, 53, 75, 62].map((height, index) => <span key={index} style={{ height: `${height}%` }} />)}
-              </div>
+              {isLoadingTrend && <p>감정 흐름을 불러오는 중이에요...</p>}
+              {trendLoadError && <p className="login-error">{trendLoadError}</p>}
+              {!isLoadingTrend && !trendLoadError && (
+                <div className="bars" aria-label="최근 7일 감정 강도 그래프">
+                  {(emotionTrend?.trends ?? []).map((trend) => {
+                    const dominantEmotion = (Object.keys(emotionInfo) as Emotion[]).reduce(
+                      (current, emotion) =>
+                        trend.scores[emotion] > trend.scores[current] ? emotion : current,
+                      'JOY',
+                    )
+                    const score = trend.scores[dominantEmotion]
+
+                    return (
+                      <span
+                        key={trend.date}
+                        title={`${trend.date}: ${emotionInfo[dominantEmotion].label} ${score} / 5`}
+                        style={{
+                          height: `${score * 20}%`,
+                          background: emotionInfo[dominantEmotion].color,
+                        }}
+                      />
+                    )
+                  })}
+                </div>
+              )}
             </section>
 
             <section className="section-block">
@@ -465,37 +597,110 @@ export default function App() {
 
         {view === 'list' && (
           <section className="page-section">
-            <p className="eyebrow">MY ARCHIVE</p><h1>나의 일기</h1>
-            <div className="diary-list">
-              {isLoadingDiaries && <p>일기를 불러오는 중이에요...</p>}
+            <p className="eyebrow">MY ARCHIVE</p><h1>기록 달력</h1>
 
-              {diaryLoadError && (
-                  <p className="login-error">{diaryLoadError}</p>
-              )}
+            {isLoadingDiaries && <p>일기를 불러오는 중이에요...</p>}
+            {diaryLoadError && <p className="login-error">{diaryLoadError}</p>}
 
-              {!isLoadingDiaries && !diaryLoadError && realDiaries.length === 0 && (
-                  <p>아직 작성한 일기가 없어요.</p>
-              )}
+            {!isLoadingDiaries && !diaryLoadError && (
+              <>
+                <section className="calendar-card" aria-label="일기 기록 달력">
+                  <div className="calendar-header">
+                    <button
+                      type="button"
+                      aria-label="이전 달"
+                      onClick={() => setCalendarMonth((month) =>
+                        new Date(month.getFullYear(), month.getMonth() - 1, 1),
+                      )}
+                    >
+                      ‹
+                    </button>
+                    <strong>{formatMonth(calendarMonth)}</strong>
+                    <button
+                      type="button"
+                      aria-label="다음 달"
+                      onClick={() => setCalendarMonth((month) =>
+                        new Date(month.getFullYear(), month.getMonth() + 1, 1),
+                      )}
+                    >
+                      ›
+                    </button>
+                  </div>
 
-              {!isLoadingDiaries && !diaryLoadError &&
-                  realDiaries.map((diary) => (
-                      <button
+                  <div className="calendar-weekdays" aria-hidden="true">
+                    {['일', '월', '화', '수', '목', '금', '토'].map((day) => <span key={day}>{day}</span>)}
+                  </div>
+
+                  <div className="calendar-grid">
+                    {calendarDates.map((day, index) => {
+                      if (day === null) {
+                        return <span className="calendar-empty" key={`empty-${index}`} />
+                      }
+
+                      const date = new Date(
+                        calendarMonth.getFullYear(),
+                        calendarMonth.getMonth(),
+                        day,
+                      )
+                      const dateKey = toDateKey(date)
+                      const diaries = diariesByDate[dateKey] ?? []
+                      const isToday = dateKey === toDateKey(new Date())
+                      const isSelected = dateKey === selectedCalendarDate
+
+                      return (
+                        <button
+                          className={`calendar-day${diaries.length > 0 ? ' has-diary' : ''}${isToday ? ' today' : ''}${isSelected ? ' selected' : ''}`}
                           type="button"
-                          className="diary-card"
-                          key={diary.id}
-                          onClick={() => openDetail(diary.id)}
+                          key={dateKey}
+                          onClick={() => setSelectedCalendarDate(dateKey)}
+                          aria-label={`${dateKey}, 기록 ${diaries.length}개`}
+                        >
+                          <span>{day}</span>
+                          {diaries.length > 0 && <small>{diaries.length}</small>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </section>
+
+                <section className="calendar-records section-block">
+                  <div className="section-heading">
+                    <h2>
+                      {selectedCalendarDate
+                        ? new Date(`${selectedCalendarDate}T00:00:00`).toLocaleDateString('ko-KR', {
+                          month: 'long',
+                          day: 'numeric',
+                        })
+                        : '날짜를 선택해 주세요'}
+                    </h2>
+                  </div>
+
+                  {!selectedCalendarDate && <p>달력의 날짜를 누르면 그날 작성한 기록을 볼 수 있어요.</p>}
+                  {selectedCalendarDate && selectedDateDiaries.length === 0 && <p>이 날짜에는 작성한 일기가 없어요.</p>}
+
+                  <div className="diary-list">
+                    {selectedDateDiaries.map((diary) => (
+                      <button
+                        type="button"
+                        className="diary-card"
+                        key={diary.id}
+                        onClick={() => openDetail(diary.id)}
                       >
                         <span className="emotion-icon small">📖</span>
-
                         <span className="diary-card-copy">
-          <small>
-            {new Date(diary.createdAt).toLocaleDateString('ko-KR')}
-          </small>
-          <strong>{diary.title ?? '제목 없는 일기'}</strong>
-        </span>
+                          <small>{new Date(diary.createdAt).toLocaleTimeString('ko-KR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}</small>
+                          <strong>{diary.title ?? '제목 없는 일기'}</strong>
+                        </span>
+                        <span className="arrow">›</span>
                       </button>
-                  ))}
-            </div>
+                    ))}
+                  </div>
+                </section>
+              </>
+            )}
           </section>
         )}
 
