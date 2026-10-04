@@ -97,7 +97,7 @@ public class EmotionAnalysisService {
         LocalDateTime startDateTime = startDate.atStartOfDay();
 
         List<EmotionAnalysis> analyses = emotionAnalysisRepository
-                .findByDiaryUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtDesc(
+                .findByDiaryUserIdAndDiaryDeletedAtIsNullAndCreatedAtGreaterThanEqualOrderByCreatedAtDesc(
                         userId,
                         startDateTime
                 );

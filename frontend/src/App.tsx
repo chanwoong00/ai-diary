@@ -30,7 +30,9 @@ const emotionInfo: Record<Emotion, { label: string; icon: string; color: string 
   CALM: { label: '평온', icon: '🌿', color: '#5f9d80' },
 }
 
-type View = 'home' | 'list' | 'write' | 'detail' | 'login' | 'signup'
+type View = 'home' | 'report' | 'list' | 'write' | 'detail' | 'login' | 'signup'
+
+const emotionKeys = Object.keys(emotionInfo) as Emotion[]
 
 function toDateKey(date: Date) {
   const year = date.getFullYear()
@@ -45,6 +47,52 @@ function formatMonth(date: Date) {
     year: 'numeric',
     month: 'long',
   }).format(date)
+}
+
+function getAverageScores(trends: EmotionTrendResponse['trends']) {
+  return emotionKeys.reduce<Record<Emotion, number>>((scores, emotion) => {
+    const total = trends.reduce((sum, trend) => sum + trend.scores[emotion], 0)
+    scores[emotion] = trends.length === 0
+      ? 0
+      : Math.round((total / trends.length) * 10) / 10
+    return scores
+  }, {} as Record<Emotion, number>)
+}
+
+function getDominantEmotion(trends: EmotionTrendResponse['trends']) {
+  if (!trends.some((trend) => Object.values(trend.scores).some((score) => score > 0))) {
+    return null
+  }
+
+  return emotionKeys.reduce((current, emotion) => {
+    const currentTotal = trends.reduce((sum, trend) => sum + trend.scores[current], 0)
+    const emotionTotal = trends.reduce((sum, trend) => sum + trend.scores[emotion], 0)
+    return emotionTotal > currentTotal ? emotion : current
+  }, 'JOY')
+}
+
+function makeLinePoints(trends: EmotionTrendResponse['trends'], emotion: Emotion) {
+  return trends.map((_, index) => {
+    const point = getChartPoint(trends, index, emotion)
+    return `${point.x},${point.y}`
+  }).join(' ')
+}
+
+function getChartPoint(
+  trends: EmotionTrendResponse['trends'],
+  index: number,
+  emotion: Emotion,
+) {
+  const graphWidth = 280
+  const graphLeft = 26
+  const graphTop = 16
+  const graphHeight = 124
+  const interval = trends.length > 1 ? graphWidth / (trends.length - 1) : 0
+
+  return {
+    x: graphLeft + interval * index,
+    y: graphTop + ((5 - trends[index].scores[emotion]) / 5) * graphHeight,
+  }
 }
 
 export default function App() {
@@ -72,6 +120,12 @@ export default function App() {
   const [emotionTrend, setEmotionTrend] = useState<EmotionTrendResponse | null>(null)
   const [isLoadingTrend, setIsLoadingTrend] = useState(false)
   const [trendLoadError, setTrendLoadError] = useState('')
+  const [reportDays, setReportDays] = useState<7 | 30>(7)
+  const [reportTrend, setReportTrend] = useState<EmotionTrendResponse | null>(null)
+  const [isLoadingReport, setIsLoadingReport] = useState(false)
+  const [reportLoadError, setReportLoadError] = useState('')
+  const [hoveredReportIndex, setHoveredReportIndex] = useState<number | null>(null)
+  const [hoveredHomeTrendIndex, setHoveredHomeTrendIndex] = useState<number | null>(null)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
   const [detailLoadError, setDetailLoadError] = useState('')
   const [isDeletingDiary, setIsDeletingDiary] = useState(false)
@@ -107,6 +161,24 @@ export default function App() {
     }
   }
 
+  async function loadReportTrend(days: 7 | 30) {
+    setIsLoadingReport(true)
+    setReportLoadError('')
+
+    try {
+      const response = await getEmotionTrends(days)
+      setReportTrend(response)
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setReportLoadError(`${error.message} (${error.status})`)
+      } else {
+        setReportLoadError('감정 리포트를 불러오지 못했습니다.')
+      }
+    } finally {
+      setIsLoadingReport(false)
+    }
+  }
+
   useEffect(() => {
     if (!isLoggedIn) return
 
@@ -139,6 +211,11 @@ export default function App() {
 
     void loadEmotionTrend()
   }, [isLoggedIn])
+
+  useEffect(() => {
+    if (view !== 'report' || !isLoggedIn) return
+    void loadReportTrend(reportDays)
+  }, [view, isLoggedIn, reportDays])
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -193,6 +270,7 @@ export default function App() {
     setSelectedRealDiary(null)
     setLatestAnalysis(null)
     setEmotionTrend(null)
+    setReportTrend(null)
     setView('home')
   }
     async function openDetail(id: number) {
@@ -325,24 +403,15 @@ export default function App() {
     await runAnalysis(selectedRealDiary.id)
   }
 
-  const hasTrendData = emotionTrend?.trends.some((trend) =>
-    Object.values(trend.scores).some((score) => score > 0),
-  ) ?? false
-
-  const dominantTrendEmotion = hasTrendData && emotionTrend
-    ? (Object.keys(emotionInfo) as Emotion[]).reduce((current, emotion) => {
-      const currentTotal = emotionTrend.trends.reduce(
-        (total, trend) => total + trend.scores[current],
-        0,
-      )
-      const emotionTotal = emotionTrend.trends.reduce(
-        (total, trend) => total + trend.scores[emotion],
-        0,
-      )
-
-      return emotionTotal > currentTotal ? emotion : current
-    }, 'JOY')
-    : null
+  const dominantTrendEmotion = getDominantEmotion(emotionTrend?.trends ?? [])
+  const reportAverageScores = getAverageScores(reportTrend?.trends ?? [])
+  const dominantReportEmotion = getDominantEmotion(reportTrend?.trends ?? [])
+  const hoveredReport = hoveredReportIndex === null
+    ? null
+    : reportTrend?.trends[hoveredReportIndex] ?? null
+  const hoveredHomeTrend = hoveredHomeTrendIndex === null
+    ? null
+    : emotionTrend?.trends[hoveredHomeTrendIndex] ?? null
 
   const calendarStartDay = new Date(
     calendarMonth.getFullYear(),
@@ -509,7 +578,7 @@ export default function App() {
             <section className="section-block">
               <div className="section-heading">
                 <div><p className="eyebrow">EMOTION SNAPSHOT</p><h2>최근 마음의 흐름</h2></div>
-                <button className="text-button" onClick={() => setView('list')}>전체 보기</button>
+                <button className="text-button" onClick={() => setView('report')}>리포트 보기 →</button>
               </div>
               <div className="trend-card">
                 <div className="trend-icon">{dominantTrendEmotion ? emotionInfo[dominantTrendEmotion].icon : '📊'}</div>
@@ -529,26 +598,50 @@ export default function App() {
               {isLoadingTrend && <p>감정 흐름을 불러오는 중이에요...</p>}
               {trendLoadError && <p className="login-error">{trendLoadError}</p>}
               {!isLoadingTrend && !trendLoadError && (
-                <div className="bars" aria-label="최근 7일 감정 강도 그래프">
-                  {(emotionTrend?.trends ?? []).map((trend) => {
-                    const dominantEmotion = (Object.keys(emotionInfo) as Emotion[]).reduce(
+                <div className="home-chart-area" onMouseLeave={() => setHoveredHomeTrendIndex(null)}>
+                  <div className="bars" aria-label="최근 7일 감정 강도 그래프">
+                    {(emotionTrend?.trends ?? []).map((trend, index) => {
+                      const dominantEmotion = emotionKeys.reduce(
+                        (current, emotion) =>
+                          trend.scores[emotion] > trend.scores[current] ? emotion : current,
+                        'JOY',
+                      )
+                      const score = trend.scores[dominantEmotion]
+
+                      return (
+                        <span
+                          key={trend.date}
+                          onMouseEnter={() => setHoveredHomeTrendIndex(index)}
+                          style={{
+                            height: `${score * 20}%`,
+                            background: emotionInfo[dominantEmotion].color,
+                          }}
+                        />
+                      )
+                    })}
+                  </div>
+
+                  {hoveredHomeTrend && (() => {
+                    const dominantEmotion = emotionKeys.reduce(
                       (current, emotion) =>
-                        trend.scores[emotion] > trend.scores[current] ? emotion : current,
+                        hoveredHomeTrend.scores[emotion] > hoveredHomeTrend.scores[current]
+                          ? emotion
+                          : current,
                       'JOY',
                     )
-                    const score = trend.scores[dominantEmotion]
+                    const score = hoveredHomeTrend.scores[dominantEmotion]
+                    const left = ((hoveredHomeTrendIndex! + 0.5) / emotionTrend!.trends.length) * 100
 
                     return (
-                      <span
-                        key={trend.date}
-                        title={`${trend.date}: ${emotionInfo[dominantEmotion].label} ${score} / 5`}
-                        style={{
-                          height: `${score * 20}%`,
-                          background: emotionInfo[dominantEmotion].color,
-                        }}
-                      />
+                      <div className="home-chart-tooltip" style={{ left: `${left}%` }}>
+                        <strong>{hoveredHomeTrend.date}</strong>
+                        <span>
+                          <i style={{ backgroundColor: emotionInfo[dominantEmotion].color }} />
+                          {emotionInfo[dominantEmotion].label} {score} / 5
+                        </span>
+                      </div>
                     )
-                  })}
+                  })()}
                 </div>
               )}
             </section>
@@ -593,6 +686,185 @@ export default function App() {
               </div>
             </section>
           </>
+        )}
+
+        {view === 'report' && (
+          <section className="page-section report-page">
+            <button className="back-button" onClick={() => setView('home')}>← 홈으로</button>
+            <p className="eyebrow">EMOTION REPORT</p>
+            <h1>마음 리포트</h1>
+            <p className="report-description">기록한 감정의 변화를 날짜별로 살펴보세요.</p>
+
+            <div className="period-toggle" role="group" aria-label="리포트 기간 선택">
+              <button
+                type="button"
+                className={reportDays === 7 ? 'active' : ''}
+                onClick={() => setReportDays(7)}
+              >
+                최근 7일
+              </button>
+              <button
+                type="button"
+                className={reportDays === 30 ? 'active' : ''}
+                onClick={() => setReportDays(30)}
+              >
+                최근 30일
+              </button>
+            </div>
+
+            {isLoadingReport && <p>감정 리포트를 불러오는 중이에요...</p>}
+            {reportLoadError && <p className="login-error">{reportLoadError}</p>}
+
+            {!isLoadingReport && !reportLoadError && reportTrend && (
+              <>
+                <section className="report-summary-card">
+                  <span className="report-summary-icon">
+                    {dominantReportEmotion ? emotionInfo[dominantReportEmotion].icon : '📝'}
+                  </span>
+                  <div>
+                    <p>최근 {reportTrend.days}일의 대표 감정</p>
+                    <strong>
+                      {dominantReportEmotion
+                        ? emotionInfo[dominantReportEmotion].label
+                        : '아직 분석된 기록이 없어요'}
+                    </strong>
+                  </div>
+                </section>
+
+                <section className="report-chart-card">
+                  <div className="report-card-heading">
+                    <div>
+                      <p className="eyebrow">EMOTION CHANGE</p>
+                      <h2>감정 변화 그래프</h2>
+                    </div>
+                    <span>점수 0~5</span>
+                  </div>
+
+                  <div className="chart-legend">
+                    {emotionKeys.map((emotion) => (
+                      <span key={emotion} style={{ color: emotionInfo[emotion].color }}>
+                        <i style={{ backgroundColor: emotionInfo[emotion].color }} />
+                        {emotionInfo[emotion].label}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="report-chart-area">
+                    <svg
+                      className="emotion-line-chart"
+                      viewBox="0 0 320 168"
+                      role="img"
+                      aria-label={`최근 ${reportTrend.days}일 감정 점수 변화 그래프`}
+                    >
+                    {[0, 1, 2, 3, 4, 5].map((score) => {
+                      const y = 16 + ((5 - score) / 5) * 124
+                      return (
+                        <g key={score}>
+                          <line x1="26" x2="306" y1={y} y2={y} className="chart-grid-line" />
+                          <text x="3" y={y + 4} className="chart-axis-label">{score}</text>
+                        </g>
+                      )
+                    })}
+                    {emotionKeys.map((emotion) => (
+                      <polyline
+                        key={emotion}
+                        points={makeLinePoints(reportTrend.trends, emotion)}
+                        fill="none"
+                        stroke={emotionInfo[emotion].color}
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    ))}
+                    {reportTrend.trends.map((trend, index) => {
+                      const graphWidth = 280
+                      const graphLeft = 26
+                      const interval = reportTrend.trends.length > 1
+                        ? graphWidth / (reportTrend.trends.length - 1)
+                        : graphWidth
+                      const x = graphLeft + interval * index
+                      const hitAreaWidth = Math.max(interval, 18)
+
+                      return (
+                        <rect
+                          key={trend.date}
+                          x={x - hitAreaWidth / 2}
+                          y="16"
+                          width={hitAreaWidth}
+                          height="124"
+                          fill="transparent"
+                          onMouseEnter={() => setHoveredReportIndex(index)}
+                          onMouseLeave={() => setHoveredReportIndex(null)}
+                        />
+                      )
+                    })}
+                    </svg>
+
+                    <div className={`chart-date-labels days-${reportTrend.days}`}>
+                      {reportTrend.trends.map((trend, index) => (
+                        <span key={trend.date}>
+                          {reportTrend.days === 7 || index % 5 === 0
+                            ? trend.date.slice(5).replace('-', '/')
+                            : ''}
+                        </span>
+                      ))}
+                    </div>
+
+                    {hoveredReport && (() => {
+                      const maxScore = Math.max(...Object.values(hoveredReport.scores))
+                      const graphX = reportTrend.trends.length > 1
+                        ? 8.125 + (hoveredReportIndex! / (reportTrend.trends.length - 1)) * 87.5
+                        : 50
+                      const tooltipLeft = Math.max(22, Math.min(78, graphX))
+                      const tooltipTop = 16 + ((5 - maxScore) / 5) * 124
+
+                      return (
+                        <div
+                          className="report-chart-tooltip report-chart-tooltip-floating"
+                          style={{ left: `${tooltipLeft}%`, top: `${tooltipTop}px` }}
+                        >
+                          <strong>{hoveredReport.date}</strong>
+                          <div>
+                            {emotionKeys.map((emotion) => (
+                              <span key={emotion} style={{ color: emotionInfo[emotion].color }}>
+                                <i style={{ backgroundColor: emotionInfo[emotion].color }} />
+                                {emotionInfo[emotion].label} {hoveredReport.scores[emotion]}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                </section>
+
+                <section className="report-score-card">
+                  <div className="report-card-heading">
+                    <div>
+                      <p className="eyebrow">AVERAGE SCORES</p>
+                      <h2>기간 평균 점수</h2>
+                    </div>
+                  </div>
+                  <div className="report-score-list">
+                    {emotionKeys.map((emotion) => (
+                      <div className="report-score-row" key={emotion}>
+                        <span>{emotionInfo[emotion].icon} {emotionInfo[emotion].label}</span>
+                        <span className="report-score-track">
+                          <i
+                            style={{
+                              width: `${reportAverageScores[emotion] * 20}%`,
+                              backgroundColor: emotionInfo[emotion].color,
+                            }}
+                          />
+                        </span>
+                        <strong>{reportAverageScores[emotion].toFixed(1)}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </>
+            )}
+          </section>
         )}
 
         {view === 'list' && (
