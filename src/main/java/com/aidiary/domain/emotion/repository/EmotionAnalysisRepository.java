@@ -14,7 +14,7 @@ public interface EmotionAnalysisRepository
             Long diaryId
     );
 
-    List<EmotionAnalysis> findByDiaryUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtDesc(
+    List<EmotionAnalysis> findByDiaryUserIdAndDiaryDeletedAtIsNullAndCreatedAtGreaterThanEqualOrderByCreatedAtDesc(
             Long userId,
             LocalDateTime startDateTime
     );
