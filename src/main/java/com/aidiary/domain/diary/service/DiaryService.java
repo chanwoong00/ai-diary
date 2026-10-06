@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.aidiary.domain.diary.dto.DiaryDetailResponse;
 import com.aidiary.global.exception.ResourceNotFoundException;
+import com.aidiary.domain.emotion.entity.Emotion;
 
 import java.util.List;
 
@@ -54,14 +55,20 @@ public class DiaryService {
     @Transactional(readOnly = true)
     public DiaryListResponse findAll(
             Long userId,
+            String keyword,
+            Emotion emotion,
             int page,
             int size
     ) {
-        Page<Diary> diaryPage =
-                diaryRepository.findByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(
-                        userId,
-                        PageRequest.of(page, size)
-                );
+        String normalizedKeyword =
+                (keyword == null || keyword.isBlank()) ? null : keyword.trim();
+
+        Page<Diary> diaryPage = diaryRepository.search(
+                userId,
+                normalizedKeyword,
+                emotion,
+                PageRequest.of(page, size)
+        );
 
         List<DiarySummaryResponse> content = diaryPage.getContent()
                 .stream()

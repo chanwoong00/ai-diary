@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.aidiary.domain.diary.dto.DiaryDetailResponse;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import com.aidiary.domain.emotion.entity.Emotion;
 
 @RestController
 @RequestMapping("/api/diaries")
@@ -44,6 +45,8 @@ public class DiaryController {
     @GetMapping
     public ResponseEntity<DiaryListResponse> findAll(
             @AuthenticationPrincipal Long userId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Emotion emotion,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
     ) {
@@ -52,6 +55,8 @@ public class DiaryController {
 
         DiaryListResponse response = diaryService.findAll(
                 userId,
+                keyword,
+                emotion,
                 safePage,
                 safeSize
         );
