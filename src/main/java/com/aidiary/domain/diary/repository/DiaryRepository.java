@@ -8,6 +8,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
 import java.util.Optional;
 
 public interface DiaryRepository extends JpaRepository<Diary, Long> {
@@ -54,5 +57,15 @@ public interface DiaryRepository extends JpaRepository<Diary, Long> {
             @Param("keyword") String keyword,
             @Param("emotion") Emotion emotion,
             Pageable pageable
+    );
+    @Query("""
+        select d.createdAt
+        from Diary d
+        where d.user.id = :userId
+          and d.deletedAt is null
+        order by d.createdAt desc
+        """)
+    List<LocalDateTime> findCreatedAtByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(
+            @Param("userId") Long userId
     );
 }
