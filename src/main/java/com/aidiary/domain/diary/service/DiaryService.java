@@ -15,6 +15,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.aidiary.domain.diary.dto.DiaryDetailResponse;
 import com.aidiary.global.exception.ResourceNotFoundException;
+import com.aidiary.domain.emotion.entity.Emotion;
+import com.aidiary.domain.diary.dto.OnThisDayResponse;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import java.util.List;
 
@@ -54,14 +59,20 @@ public class DiaryService {
     @Transactional(readOnly = true)
     public DiaryListResponse findAll(
             Long userId,
+            String keyword,
+            Emotion emotion,
             int page,
             int size
     ) {
-        Page<Diary> diaryPage =
-                diaryRepository.findByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(
-                        userId,
-                        PageRequest.of(page, size)
-                );
+        String normalizedKeyword =
+                (keyword == null || keyword.isBlank()) ? null : keyword.trim();
+
+        Page<Diary> diaryPage = diaryRepository.search(
+                userId,
+                normalizedKeyword,
+                emotion,
+                PageRequest.of(page, size)
+        );
 
         List<DiarySummaryResponse> content = diaryPage.getContent()
                 .stream()
@@ -112,5 +123,30 @@ public class DiaryService {
                 );
 
         diary.delete();
+    }
+    @Transactional(readOnly = true)
+    public OnThisDayResponse findOnThisDay(Long userId) {
+        LocalDate targetDate = LocalDate.now().minusYears(1);
+
+        LocalDateTime startDateTime = targetDate.atStartOfDay();
+        LocalDateTime endDateTime = targetDate.plusDays(1).atStartOfDay();
+
+        List<DiaryDetailResponse> diaries = diaryRepository
+                .findByUserIdAndDeletedAtIsNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+                        userId,
+                        startDateTime,
+                        endDateTime
+                )
+                .stream()
+                .map(diary -> new DiaryDetailResponse(
+                        diary.getId(),
+                        diary.getTitle(),
+                        diary.getContent(),
+                        diary.getCreatedAt(),
+                        diary.getUpdatedAt()
+                ))
+                .toList();
+
+        return new OnThisDayResponse(targetDate, diaries);
     }
 }
