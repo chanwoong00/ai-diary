@@ -68,4 +68,9 @@ public interface DiaryRepository extends JpaRepository<Diary, Long> {
     List<LocalDateTime> findCreatedAtByUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(
             @Param("userId") Long userId
     );
+    List<Diary> findByUserIdAndDeletedAtIsNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+            Long userId,
+            LocalDateTime startDateTime,
+            LocalDateTime endDateTime
+    );
 }

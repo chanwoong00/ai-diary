@@ -19,6 +19,7 @@ import com.aidiary.domain.diary.dto.DiaryDetailResponse;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import com.aidiary.domain.emotion.entity.Emotion;
+import com.aidiary.domain.diary.dto.OnThisDayResponse;
 
 @RestController
 @RequestMapping("/api/diaries")
@@ -60,6 +61,14 @@ public class DiaryController {
                 safePage,
                 safeSize
         );
+
+        return ResponseEntity.ok(response);
+    }
+    @GetMapping("/on-this-day")
+    public ResponseEntity<OnThisDayResponse> findOnThisDay(
+            @AuthenticationPrincipal Long userId
+    ) {
+        OnThisDayResponse response = diaryService.findOnThisDay(userId);
 
         return ResponseEntity.ok(response);
     }

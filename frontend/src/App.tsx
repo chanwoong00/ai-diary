@@ -5,6 +5,8 @@ import {
   createDiary,
   deleteDiary as deleteDiaryRequest,
   getDiaries,
+  getOnThisDay,
+  getStreak,
   hasAccessToken,
   login,
   logout,
@@ -17,6 +19,8 @@ import {
   type EmotionTrendResponse,
   type DiaryDetail,
   type DiarySummary,
+  type OnThisDayResponse,
+  type StreakResponse,
 } from './api/client'
 import './App.css'
 
@@ -113,6 +117,12 @@ export default function App() {
 
   const [realDiaries, setRealDiaries] = useState<DiarySummary[]>([])
   const [selectedRealDiary, setSelectedRealDiary] = useState<DiaryDetail | null>(null)
+  const [onThisDay, setOnThisDay] = useState<OnThisDayResponse | null>(null)
+  const [isLoadingOnThisDay, setIsLoadingOnThisDay] = useState(false)
+  const [onThisDayError, setOnThisDayError] = useState('')
+  const [streak, setStreak] = useState<StreakResponse | null>(null)
+  const [isLoadingStreak, setIsLoadingStreak] = useState(false)
+  const [streakLoadError, setStreakLoadError] = useState('')
   const [latestAnalysis, setLatestAnalysis] =
     useState<EmotionAnalysisResponse | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -132,6 +142,11 @@ export default function App() {
   const [deleteError, setDeleteError] = useState('')
   const [isLoadingDiaries, setIsLoadingDiaries] = useState(false)
   const [diaryLoadError, setDiaryLoadError] = useState('')
+  const [searchKeyword, setSearchKeyword] = useState('')
+  const [searchEmotion, setSearchEmotion] = useState<Emotion | ''>('')
+  const [filteredDiaries, setFilteredDiaries] = useState<DiarySummary[]>([])
+  const [isLoadingFilteredDiaries, setIsLoadingFilteredDiaries] = useState(false)
+  const [filteredDiaryError, setFilteredDiaryError] = useState('')
   const [calendarMonth, setCalendarMonth] = useState(
     () => new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   )
@@ -179,6 +194,63 @@ export default function App() {
     }
   }
 
+  async function loadOnThisDay() {
+    setIsLoadingOnThisDay(true)
+    setOnThisDayError('')
+
+    try {
+      const response = await getOnThisDay()
+      setOnThisDay(response)
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setOnThisDayError(`${error.message} (${error.status})`)
+      } else {
+        setOnThisDayError('1년 전 오늘의 기록을 불러오지 못했습니다.')
+      }
+    } finally {
+      setIsLoadingOnThisDay(false)
+    }
+  }
+
+  async function loadStreak() {
+    setIsLoadingStreak(true)
+    setStreakLoadError('')
+
+    try {
+      const response = await getStreak()
+      setStreak(response)
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setStreakLoadError(`${error.message} (${error.status})`)
+      } else {
+        setStreakLoadError('연속 기록을 불러오지 못했습니다.')
+      }
+    } finally {
+      setIsLoadingStreak(false)
+    }
+  }
+
+  async function loadFilteredDiaries() {
+    setIsLoadingFilteredDiaries(true)
+    setFilteredDiaryError('')
+
+    try {
+      const response = await getDiaries(0, 100, {
+        keyword: searchKeyword.trim() || undefined,
+        emotion: searchEmotion || undefined,
+      })
+      setFilteredDiaries(response.content)
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setFilteredDiaryError(`${error.message} (${error.status})`)
+      } else {
+        setFilteredDiaryError('검색 결과를 불러오지 못했습니다.')
+      }
+    } finally {
+      setIsLoadingFilteredDiaries(false)
+    }
+  }
+
   useEffect(() => {
     if (!isLoggedIn) return
 
@@ -211,6 +283,34 @@ export default function App() {
 
     void loadEmotionTrend()
   }, [isLoggedIn])
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setOnThisDay(null)
+      return
+    }
+
+    void loadOnThisDay()
+  }, [isLoggedIn])
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setStreak(null)
+      return
+    }
+
+    void loadStreak()
+  }, [isLoggedIn])
+
+  useEffect(() => {
+    if (view !== 'list' || !isLoggedIn) return
+
+    const timer = window.setTimeout(() => {
+      void loadFilteredDiaries()
+    }, 250)
+
+    return () => window.clearTimeout(timer)
+  }, [view, isLoggedIn, searchKeyword, searchEmotion])
 
   useEffect(() => {
     if (view !== 'report' || !isLoggedIn) return
@@ -271,6 +371,9 @@ export default function App() {
     setLatestAnalysis(null)
     setEmotionTrend(null)
     setReportTrend(null)
+    setOnThisDay(null)
+    setStreak(null)
+    setFilteredDiaries([])
     setView('home')
   }
     async function openDetail(id: number) {
@@ -338,6 +441,8 @@ export default function App() {
       setContent('')
       setView('detail')
 
+      void loadStreak()
+
       await runAnalysis(created.id)
     } catch (error) {
       if (error instanceof ApiError) {
@@ -368,6 +473,8 @@ export default function App() {
 
       setSelectedRealDiary(null)
       setView('list')
+      void loadStreak()
+      void loadOnThisDay()
     } catch (error) {
       if (error instanceof ApiError) {
         setDeleteError(`${error.message} (${error.status})`)
@@ -574,6 +681,60 @@ export default function App() {
               <p>짧은 기록도 괜찮아요. 오늘의 감정을 AI와 함께 돌아봐요.</p>
               <button className="primary-button" onClick={() => setView('write')}>오늘의 일기 쓰기 <span>→</span></button>
             </div>
+
+            {isLoggedIn && (
+              <section className="streak-card" aria-label="연속 일기 작성일">
+                {isLoadingStreak && <p>연속 기록을 확인하는 중이에요...</p>}
+                {streakLoadError && <p className="login-error">{streakLoadError}</p>}
+                {!isLoadingStreak && !streakLoadError && streak && (
+                  <>
+                    <span className="streak-card-label">CONTINUOUS RECORD</span>
+                    <strong>{streak.streak > 0 ? `${streak.streak}일째 기록 중` : '오늘의 기록을 시작해 볼까요?'}</strong>
+                    <p>
+                      {streak.streak > 0 && streak.startedAt
+                        ? `${streak.startedAt}부터 마음을 기록하고 있어요.`
+                        : streak.lastWrittenDate
+                          ? `마지막 기록은 ${streak.lastWrittenDate}이에요.`
+                          : '첫 기록을 남기면 연속 기록을 시작할 수 있어요.'}
+                    </p>
+                  </>
+                )}
+              </section>
+            )}
+
+            <section className="section-block on-this-day-section">
+              <div className="section-heading">
+                <div><p className="eyebrow">ON THIS DAY</p><h2>1년 전 오늘</h2></div>
+              </div>
+
+              {!isLoggedIn && <p>로그인하면 지난 기록을 돌아볼 수 있어요.</p>}
+              {isLoggedIn && isLoadingOnThisDay && <p>작년 오늘의 기록을 찾는 중이에요...</p>}
+              {isLoggedIn && onThisDayError && <p className="login-error">{onThisDayError}</p>}
+
+              {isLoggedIn && !isLoadingOnThisDay && !onThisDayError && onThisDay?.diaries.length === 0 && (
+                <div className="on-this-day-empty">
+                  <span>✦</span>
+                  <p>{onThisDay.targetDate}의 기록은 아직 없어요.</p>
+                </div>
+              )}
+
+              {isLoggedIn && !isLoadingOnThisDay && !onThisDayError && onThisDay && onThisDay.diaries.length > 0 && (
+                <div className="on-this-day-list">
+                  {onThisDay.diaries.map((diary) => (
+                    <button
+                      type="button"
+                      className="on-this-day-card"
+                      key={diary.id}
+                      onClick={() => openDetail(diary.id)}
+                    >
+                      <small>{new Date(diary.createdAt).toLocaleDateString('ko-KR')}</small>
+                      <strong>{diary.title ?? '제목 없는 일기'}</strong>
+                      <span>{diary.content}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
 
             <section className="section-block">
               <div className="section-heading">
@@ -862,6 +1023,7 @@ export default function App() {
                     ))}
                   </div>
                 </section>
+
               </>
             )}
           </section>
@@ -965,6 +1127,57 @@ export default function App() {
                             minute: '2-digit',
                           })}</small>
                           <strong>{diary.title ?? '제목 없는 일기'}</strong>
+                        </span>
+                        <span className="arrow">›</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="search-section section-block">
+                  <div className="section-heading">
+                    <div><p className="eyebrow">SEARCH ARCHIVE</p><h2>기록 검색</h2></div>
+                  </div>
+
+                  <div className="diary-search-controls">
+                    <input
+                      type="search"
+                      value={searchKeyword}
+                      onChange={(event) => setSearchKeyword(event.target.value)}
+                      placeholder="제목 또는 내용 검색"
+                      aria-label="일기 키워드 검색"
+                    />
+                    <select
+                      value={searchEmotion}
+                      onChange={(event) => setSearchEmotion(event.target.value as Emotion | '')}
+                      aria-label="감정 필터"
+                    >
+                      <option value="">모든 감정</option>
+                      {emotionKeys.map((emotion) => (
+                        <option key={emotion} value={emotion}>{emotionInfo[emotion].label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {isLoadingFilteredDiaries && <p>기록을 검색하는 중이에요...</p>}
+                  {filteredDiaryError && <p className="login-error">{filteredDiaryError}</p>}
+                  {!isLoadingFilteredDiaries && !filteredDiaryError && filteredDiaries.length === 0 && (
+                    <p>조건에 맞는 기록이 없어요.</p>
+                  )}
+
+                  <div className="diary-list">
+                    {!isLoadingFilteredDiaries && !filteredDiaryError && filteredDiaries.map((diary) => (
+                      <button
+                        type="button"
+                        className="diary-card"
+                        key={diary.id}
+                        onClick={() => openDetail(diary.id)}
+                      >
+                        <span className="emotion-icon small">📖</span>
+                        <span className="diary-card-copy">
+                          <small>{new Date(diary.createdAt).toLocaleDateString('ko-KR')}</small>
+                          <strong>{diary.title ?? '제목 없는 일기'}</strong>
+                          <span>상세 화면에서 감정 분석 결과를 확인해요.</span>
                         </span>
                         <span className="arrow">›</span>
                       </button>

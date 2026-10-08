@@ -16,6 +16,10 @@ import org.springframework.transaction.annotation.Transactional;
 import com.aidiary.domain.diary.dto.DiaryDetailResponse;
 import com.aidiary.global.exception.ResourceNotFoundException;
 import com.aidiary.domain.emotion.entity.Emotion;
+import com.aidiary.domain.diary.dto.OnThisDayResponse;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import java.util.List;
 
@@ -119,5 +123,30 @@ public class DiaryService {
                 );
 
         diary.delete();
+    }
+    @Transactional(readOnly = true)
+    public OnThisDayResponse findOnThisDay(Long userId) {
+        LocalDate targetDate = LocalDate.now().minusYears(1);
+
+        LocalDateTime startDateTime = targetDate.atStartOfDay();
+        LocalDateTime endDateTime = targetDate.plusDays(1).atStartOfDay();
+
+        List<DiaryDetailResponse> diaries = diaryRepository
+                .findByUserIdAndDeletedAtIsNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+                        userId,
+                        startDateTime,
+                        endDateTime
+                )
+                .stream()
+                .map(diary -> new DiaryDetailResponse(
+                        diary.getId(),
+                        diary.getTitle(),
+                        diary.getContent(),
+                        diary.getCreatedAt(),
+                        diary.getUpdatedAt()
+                ))
+                .toList();
+
+        return new OnThisDayResponse(targetDate, diaries);
     }
 }

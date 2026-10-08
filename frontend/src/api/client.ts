@@ -65,6 +65,22 @@ export type DiaryPage = {
   hasNext: boolean
 }
 
+export type OnThisDayResponse = {
+  targetDate: string
+  diaries: DiaryDetail[]
+}
+
+export type StreakResponse = {
+  streak: number
+  lastWrittenDate: string | null
+  startedAt: string | null
+}
+
+export type DiaryFilters = {
+  keyword?: string
+  emotion?: string
+}
+
 type ApiErrorBody = {
   message?: string
 }
@@ -113,12 +129,28 @@ export function hasAccessToken() {
   return Boolean(localStorage.getItem(ACCESS_TOKEN_KEY))
 }
 
-export function getDiaries(page = 0, size = 10) {
-  return request<DiaryPage>(`/api/diaries?page=${page}&size=${size}`)
+export function getDiaries(page = 0, size = 10, filters: DiaryFilters = {}) {
+  const params = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+  })
+
+  if (filters.keyword) params.set('keyword', filters.keyword)
+  if (filters.emotion) params.set('emotion', filters.emotion)
+
+  return request<DiaryPage>(`/api/diaries?${params.toString()}`)
 }
 
 export function getDiary(diaryId: number) {
   return request<DiaryDetail>(`/api/diaries/${diaryId}`)
+}
+
+export function getOnThisDay() {
+  return request<OnThisDayResponse>('/api/diaries/on-this-day')
+}
+
+export function getStreak() {
+  return request<StreakResponse>('/api/users/me/streak')
 }
 
 export function createDiary(title: string, content: string) {
