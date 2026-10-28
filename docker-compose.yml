@@ -1,0 +1,46 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: aidiary
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  gemini:
+    build:
+      context: ./gemini-experiment
+    env_file:
+      - ./gemini-experiment/.env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+    depends_on:
+      mysql:
+        condition: service_healthy
+      gemini:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/aidiary?serverTimezone=Asia/Seoul&characterEncoding=utf8
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      GEMINI_API_BASE_URL: http://gemini:8000
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
