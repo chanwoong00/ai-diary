@@ -1,0 +1,11 @@
+.git
+.gitignore
+.idea
+.gradle
+build
+out
+*.iml
+.env
+
+frontend
+gemini-experiment
